@@ -203,6 +203,8 @@ input,select,textarea{font-family:inherit; font-size:14px; color:inherit}
 .rt-percent{font-size:12px; color:var(--accent); font-variant-numeric:tabular-nums; min-width:52px; text-align:right}
 /* 手机端专属百分比（位于「上一章«」左侧）：桌面隐藏，≤620px 显示 */
 #rt-percent-m{display:none; font-size:12px; color:var(--accent); font-variant-numeric:tabular-nums; margin:0 2px 0 6px}
+/* 手机端专属章节页状态（如 4 / 10）：位于百分比左侧，桌面隐藏，≤620px 显示 */
+#rt-page-m{display:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; margin:0 2px 0 6px}
 .rt-ph{font-size:13px; font-weight:700; letter-spacing:.5px}
 .rt-ph.off{opacity:.38; text-decoration:line-through}
 select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--line); background:var(--bg); outline:none; font-size:12.5px}
@@ -411,7 +413,8 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
   .rt-title{min-width:40px; font-size:13px}
   .rt-gap, #tts-rate, #tts-voice,
   .rt-page-label, #btn-page-prev, #btn-page-next, .rt-percent, #btn-settings{display:none}
-  /* 手机端：在「上一章«」左侧展示已读百分比；书名可收缩避让 */
+  /* 手机端：在「上一章«」左侧展示章节页状态（4 / 10）与已读百分比；书名可收缩避让 */
+  #rt-page-m{display:inline-flex}
   #rt-percent-m{display:inline-flex}
   /* 设置表单单列 */
   .form-grid{grid-template-columns:1fr}

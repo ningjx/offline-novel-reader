@@ -90,6 +90,8 @@
         </svg>
         <button class="btn ghost icon rt-toc" id="btn-toc" data-i18n-title="tocTitle">☷</button>
         <span class="rt-title" id="rt-title">—</span>
+        <!-- 手机端专属：当前章节页状态（如 4 / 10），位于百分比左侧，与桌面 #rt-page 同效 -->
+        <span class="rt-page-m" id="rt-page-m">1 / 1</span>
         <!-- 手机端专属：展示已读百分比（桌面用右侧 #rt-percent） -->
         <span class="rt-percent-m" id="rt-percent-m" data-i18n-title="percentTitle">0%</span>
         <button class="btn ghost icon rt-chapnav" id="btn-chap-prev" data-i18n-title="chapPrevTitle">«</button>
@@ -446,7 +448,7 @@ const I18N_LANGS = {
     selSpeak: '朗读',
     selCopy: '复制',
     copied: '已复制',
-    copyPrompt: '复制文本：',
+    copyFail: '复制失败，请长按手动复制',
     noTts: '当前浏览器不支持语音合成(SpeechSynthesis)',
     speakingSel: '正在朗读选中文字…',
     bookFinished: '全书朗读完成',
@@ -655,7 +657,7 @@ const I18N_LANGS = {
     selSpeak: 'Speak',
     selCopy: 'Copy',
     copied: 'Copied',
-    copyPrompt: 'Copy text: ',
+    copyFail: 'Copy failed, long-press to copy manually',
     noTts: 'Speech synthesis is not supported in this browser',
     speakingSel: 'Reading selected text…',
     bookFinished: 'Finished reading the book',

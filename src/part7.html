@@ -368,12 +368,33 @@ class App {
       case 'speak':
         this._speakSelection(text);
         break;
-      case 'copy':
-        navigator.clipboard && navigator.clipboard.writeText(text)
-          .then(() => toast(I18N.t('copied')))
-          .catch(() => { window.prompt(I18N.t('copyPrompt'), text); });
+      case 'copy': {
+        // 桌面与移动端行为一致：不弹窗。优先异步 Clipboard API；失败（file:// / 旧浏览器）
+        // 降级为隐藏 textarea + execCommand('copy')，移动端也不会弹任何提示框
+        const done = () => toast(I18N.t('copied'));
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(() => this._fallbackCopy(text, done));
+        } else {
+          this._fallbackCopy(text, done);
+        }
         break;
+      }
     }
+  }
+  /** 剪贴板降级复制：隐藏 textarea + execCommand('copy')（file:// / 移动端旧浏览器），不弹任何提示框 */
+  _fallbackCopy(text, done) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed; top:-9999px; left:-9999px; opacity:0; width:1px; height:1px';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    if (ok) done();
+    else toast(I18N.t('copyFail'), true);
   }
   _speakSelection(text) {
     if (!this.reader.tts.supported) { toast(I18N.t('noTts'), true); return; }

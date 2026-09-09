@@ -203,6 +203,8 @@ input,select,textarea{font-family:inherit; font-size:14px; color:inherit}
 .rt-percent{font-size:12px; color:var(--accent); font-variant-numeric:tabular-nums; min-width:52px; text-align:right}
 /* 手机端专属百分比（位于「上一章«」左侧）：桌面隐藏，≤620px 显示 */
 #rt-percent-m{display:none; font-size:12px; color:var(--accent); font-variant-numeric:tabular-nums; margin:0 2px 0 6px}
+/* 手机端专属章节页状态（如 4 / 10）：位于百分比左侧，桌面隐藏，≤620px 显示 */
+#rt-page-m{display:none; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; margin:0 2px 0 6px}
 .rt-ph{font-size:13px; font-weight:700; letter-spacing:.5px}
 .rt-ph.off{opacity:.38; text-decoration:line-through}
 select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--line); background:var(--bg); outline:none; font-size:12.5px}
@@ -411,7 +413,8 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
   .rt-title{min-width:40px; font-size:13px}
   .rt-gap, #tts-rate, #tts-voice,
   .rt-page-label, #btn-page-prev, #btn-page-next, .rt-percent, #btn-settings{display:none}
-  /* 手机端：在「上一章«」左侧展示已读百分比；书名可收缩避让 */
+  /* 手机端：在「上一章«」左侧展示章节页状态（4 / 10）与已读百分比；书名可收缩避让 */
+  #rt-page-m{display:inline-flex}
   #rt-percent-m{display:inline-flex}
   /* 设置表单单列 */
   .form-grid{grid-template-columns:1fr}
@@ -530,6 +533,8 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
         </svg>
         <button class="btn ghost icon rt-toc" id="btn-toc" data-i18n-title="tocTitle">☷</button>
         <span class="rt-title" id="rt-title">—</span>
+        <!-- 手机端专属：当前章节页状态（如 4 / 10），位于百分比左侧，与桌面 #rt-page 同效 -->
+        <span class="rt-page-m" id="rt-page-m">1 / 1</span>
         <!-- 手机端专属：展示已读百分比（桌面用右侧 #rt-percent） -->
         <span class="rt-percent-m" id="rt-percent-m" data-i18n-title="percentTitle">0%</span>
         <button class="btn ghost icon rt-chapnav" id="btn-chap-prev" data-i18n-title="chapPrevTitle">«</button>
@@ -886,7 +891,7 @@ const I18N_LANGS = {
     selSpeak: '朗读',
     selCopy: '复制',
     copied: '已复制',
-    copyPrompt: '复制文本：',
+    copyFail: '复制失败，请长按手动复制',
     noTts: '当前浏览器不支持语音合成(SpeechSynthesis)',
     speakingSel: '正在朗读选中文字…',
     bookFinished: '全书朗读完成',
@@ -1095,7 +1100,7 @@ const I18N_LANGS = {
     selSpeak: 'Speak',
     selCopy: 'Copy',
     copied: 'Copied',
-    copyPrompt: 'Copy text: ',
+    copyFail: 'Copy failed, long-press to copy manually',
     noTts: 'Speech synthesis is not supported in this browser',
     speakingSel: 'Reading selected text…',
     bookFinished: 'Finished reading the book',
@@ -16345,6 +16350,9 @@ class Reader {
     // 手机端专属百分比（位于「上一章«」左侧）与桌面 #rt-percent 同步
     const pm = document.getElementById('rt-percent-m');
     if (pm) pm.textContent = Math.round(p * 100) + '%';
+    // 手机端专属章节页状态（位于百分比左侧）与桌面 #rt-page 同步（如 4 / 10）
+    const pmm = document.getElementById('rt-page-m');
+    if (pmm) pmm.textContent = this.el.pageLabel.textContent;
     this.bus.emit('reader:page', {
       bookId: this.book.id,
       chapterIndex: this.chapterIndex,
@@ -16510,6 +16518,12 @@ class Reader {
     this.el.ttsPlay.onclick = () => { this.reading ? this.stopReading(true) : this.startReading(); };
     // 全局键盘翻页（输入框/弹窗打开时不劫持按键）
     window.addEventListener('keydown', e => this._onKey(e));
+    // 朗读中切后台 / 锁屏 / 屏幕变暗：浏览器会中断语音并可能补偿性快速触发 TTS 回调，
+    // 使朗读循环在后台飞跑、唤醒后位置突然前跳很多页。
+    // 因此页面隐藏时立即暂停朗读并记录断点——恢复后停留在停止处，点 ▶ 从断点继续。
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && this.reading) this.stopReading(true);
+    });
 
     // 点击翻页热区：不用覆盖层（会挡住文本选取、显示手掌光标），
     // 改为正文上的 click 按横坐标判定（左 26% 上页 / 右 26% 下页）
@@ -16999,12 +17013,33 @@ class App {
       case 'speak':
         this._speakSelection(text);
         break;
-      case 'copy':
-        navigator.clipboard && navigator.clipboard.writeText(text)
-          .then(() => toast(I18N.t('copied')))
-          .catch(() => { window.prompt(I18N.t('copyPrompt'), text); });
+      case 'copy': {
+        // 桌面与移动端行为一致：不弹窗。优先异步 Clipboard API；失败（file:// / 旧浏览器）
+        // 降级为隐藏 textarea + execCommand('copy')，移动端也不会弹任何提示框
+        const done = () => toast(I18N.t('copied'));
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(() => this._fallbackCopy(text, done));
+        } else {
+          this._fallbackCopy(text, done);
+        }
         break;
+      }
     }
+  }
+  /** 剪贴板降级复制：隐藏 textarea + execCommand('copy')（file:// / 移动端旧浏览器），不弹任何提示框 */
+  _fallbackCopy(text, done) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed; top:-9999px; left:-9999px; opacity:0; width:1px; height:1px';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    if (ok) done();
+    else toast(I18N.t('copyFail'), true);
   }
   _speakSelection(text) {
     if (!this.reader.tts.supported) { toast(I18N.t('noTts'), true); return; }

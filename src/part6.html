@@ -496,6 +496,9 @@ class Reader {
     // 手机端专属百分比（位于「上一章«」左侧）与桌面 #rt-percent 同步
     const pm = document.getElementById('rt-percent-m');
     if (pm) pm.textContent = Math.round(p * 100) + '%';
+    // 手机端专属章节页状态（位于百分比左侧）与桌面 #rt-page 同步（如 4 / 10）
+    const pmm = document.getElementById('rt-page-m');
+    if (pmm) pmm.textContent = this.el.pageLabel.textContent;
     this.bus.emit('reader:page', {
       bookId: this.book.id,
       chapterIndex: this.chapterIndex,
@@ -661,6 +664,12 @@ class Reader {
     this.el.ttsPlay.onclick = () => { this.reading ? this.stopReading(true) : this.startReading(); };
     // 全局键盘翻页（输入框/弹窗打开时不劫持按键）
     window.addEventListener('keydown', e => this._onKey(e));
+    // 朗读中切后台 / 锁屏 / 屏幕变暗：浏览器会中断语音并可能补偿性快速触发 TTS 回调，
+    // 使朗读循环在后台飞跑、唤醒后位置突然前跳很多页。
+    // 因此页面隐藏时立即暂停朗读并记录断点——恢复后停留在停止处，点 ▶ 从断点继续。
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && this.reading) this.stopReading(true);
+    });
 
     // 点击翻页热区：不用覆盖层（会挡住文本选取、显示手掌光标），
     // 改为正文上的 click 按横坐标判定（左 26% 上页 / 右 26% 下页）
