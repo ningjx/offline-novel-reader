@@ -15446,6 +15446,7 @@ class Reader {
     this.chapters = await this.data.loadChapters(book.id);
     this._pagesCache.clear();
     this.el.root.classList.add('show');
+    this.el.root.classList.remove('no-book');   // 有书：阅读区占满、显示正文页框
     this.el.empty.style.display = 'none';
     this.el.title.textContent = book.title || I18N.t('untitled');
     this.bus.emit('books:changed');
@@ -15468,7 +15469,8 @@ class Reader {
     this.stopReading();
     this.book = null;
     this.chapters = null;
-    this.el.root.classList.remove('show');
+    // 关闭后回到空态：保留工具栏（常显），进入 no-book 收缩态（只占工具栏高度）
+    this.el.root.classList.add('show', 'no-book');
     this.el.empty.style.display = '';
     this.bus.emit('reader:close');
   }
@@ -16111,6 +16113,9 @@ class App {
     this._fillRateSelect('#tts-rate');
     this._fillAwakeSelect();
     this._fillSettingSelects();
+    // 阅读区常显：即使尚未打开书（书库为空 / 未恢复上次阅读），工具栏也保持可见；
+    // 打开书后 openBook 里再次 add('show') 幂等无副作用
+    $('#reader').classList.add('show', 'no-book');
     this._voices = [];
     this.reader.tts.onVoices(voices => { this._voices = voices; this._fillVoiceSelect(voices); });
 

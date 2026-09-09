@@ -162,6 +162,9 @@ class App {
     this._fillRateSelect('#tts-rate');
     this._fillAwakeSelect();
     this._fillSettingSelects();
+    // 阅读区常显：即使尚未打开书（书库为空 / 未恢复上次阅读），工具栏也保持可见；
+    // 打开书后 openBook 里再次 add('show') 幂等无副作用
+    $('#reader').classList.add('show', 'no-book');
     this._voices = [];
     this.reader.tts.onVoices(voices => { this._voices = voices; this._fillVoiceSelect(voices); });
 

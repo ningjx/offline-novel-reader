@@ -100,6 +100,12 @@ input,select,textarea{font-family:inherit; font-size:14px; color:inherit}
   font-size:12px; color:var(--muted); background:var(--bg2); border-top:1px solid var(--line);
   overflow:hidden; white-space:nowrap}
 #main{grid-area:main; position:relative; overflow:hidden; display:flex; flex-direction:column}
+/* 空态也显示工具栏时，布局与开书后保持一致：工具栏永远位于最上方 */
+#main > #reader{order:0}
+#main > #reader-empty{order:1}
+/* 空态（未开书）：阅读区只保留工具栏高度、空白页框不占空间，空提示占满其余区域，避免中间留白 */
+#reader.no-book{flex:0 0 auto}
+#reader.no-book #page-frame{display:none}
 
 /* ---------- 顶栏 ---------- */
 .btn{
