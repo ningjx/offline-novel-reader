@@ -904,6 +904,9 @@ const I18N_LANGS = {
     awakeH2: '2 小时',
     awakeH5: '5 小时',
     awakeNo: '当前浏览器不支持屏幕常亮，将在锁屏后熄屏',
+    awakeFs: '已进入全屏以保持屏幕常亮，退出全屏后常亮停止',
+    awakeExitFs: '已退出全屏，屏幕常亮停止',
+    awakeFail: '无法保持屏幕常亮（需全屏模式或受支持环境）',
     // 粘贴导入
     pasteTitleH: '粘贴导入小说',
     pasteName: '书名',
@@ -1113,6 +1116,9 @@ const I18N_LANGS = {
     awakeH2: '2 hours',
     awakeH5: '5 hours',
     awakeNo: 'Screen wake lock is not supported here; the screen may sleep when locked',
+    awakeFs: 'Entered fullscreen to keep the screen awake; it stops after exiting fullscreen',
+    awakeExitFs: 'Exited fullscreen, screen awake stopped',
+    awakeFail: 'Cannot keep the screen awake (needs fullscreen or a supported environment)',
     pasteTitleH: 'Paste-import a novel',
     pasteName: 'Title',
     pasteNamePh: 'required',
@@ -16741,23 +16747,58 @@ class App {
   }
 
   /* ---------- 屏幕常亮（Screen Wake Lock）---------- */
-  /** 应用常亮设置：duration 内保持屏幕点亮；非法/不支持时静默，页面回到可见时自动续期 */
+  /** 应用常亮设置：duration 内保持屏幕点亮；Chrome 要求全屏/PWA 才授予常亮，
+      请求失败时自动进入全屏重试；到期 / 切回「默认」时释放并退出为常亮进入的全屏 */
   _applyWakeLock() {
     // 清理既有
     if (this._wakeTimer) { clearTimeout(this._wakeTimer); this._wakeTimer = null; }
     if (this._wakeSentinel) { const s = this._wakeSentinel; this._wakeSentinel = null; try { s.release(); } catch (e) { /* 已释放 */ } }
     const dur = (this.settings && this.settings.awakeDur) || 0;
-    if (!dur) { this._wakeUntil = 0; return; }
+    if (!dur) {
+      this._wakeUntil = 0;
+      this._exitWakeFullscreen();
+      return;
+    }
     if (!navigator.wakeLock || !navigator.wakeLock.request) { toast(I18N.t('awakeNo'), true); return; }
     if (document.visibilityState !== 'visible') return;   // 后台时浏览器策略不允许；回前台由 visibilitychange 续期
     const remain = this._wakeUntil ? Math.max(0, this._wakeUntil - Date.now()) : dur * 60000;
-    if (remain <= 0) { this._wakeUntil = 0; return; }      // 窗口已过期：保持默认熄屏
+    if (remain <= 0) {
+      this._wakeUntil = 0;                 // 窗口已过期：释放并退出全屏，恢复默认熄屏
+      this._exitWakeFullscreen();
+      return;
+    }
     this._wakeUntil = Date.now() + remain;
-    navigator.wakeLock.request('screen').then(s => {
+    this._requestWake(remain);
+  }
+  /** 请求常亮：失败（非全屏被拒）→ 进入全屏后重试一次；仍失败则提示 */
+  async _requestWake(remain) {
+    const grant = async () => {
+      const s = await navigator.wakeLock.request('screen');
       this._wakeSentinel = s;
       if (s.addEventListener) s.addEventListener('release', () => { if (this._wakeSentinel === s) this._wakeSentinel = null; });
-    }).catch(() => { /* 请求失败（权限/系统限制）不影响阅读 */ });
-    this._wakeTimer = setTimeout(() => this._applyWakeLock(), remain);  // 到点按时长释放
+      this._wakeTimer = setTimeout(() => this._applyWakeLock(), remain);  // 到点按时长释放
+    };
+    try {
+      await grant();
+    } catch (err) {
+      // Chrome：screen 常亮要求全屏/PWA——自动进入全屏后重试
+      if (!document.fullscreenElement) {
+        try { await document.documentElement.requestFullscreen(); } catch (e) { /* 不支持/被拒绝 */ }
+      }
+      try {
+        await grant();
+        toast(I18N.t('awakeFs'));
+      } catch (e2) {
+        toast(I18N.t('awakeFail'), true);
+      }
+    }
+  }
+  /** 常亮结束（切回默认 / 窗口到期）：退出为常亮而进入的全屏 */
+  _exitWakeFullscreen() {
+    if (document.fullscreenElement && this._wakeFs) {
+      this._wakeFs = false;
+      try { document.exitFullscreen(); } catch (e) { /* 忽略 */ }
+    }
   }
 
   async init() {
@@ -17519,6 +17560,19 @@ class App {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && (this.settings && this.settings.awakeDur > 0)) {
         if (this._wakeUntil && Date.now() < this._wakeUntil && !this._wakeSentinel) this._applyWakeLock();
+      }
+    });
+    // 全屏状态变化：非全屏下常亮无法保持——用户 Esc/手势退出全屏（或系统退出）时释放常亮并提示
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement) {
+        if (this._wakeSentinel) { try { this._wakeSentinel.release(); } catch (e) { /* 忽略 */ } this._wakeSentinel = null; }
+        if (this._wakeTimer) { clearTimeout(this._wakeTimer); this._wakeTimer = null; }
+        if (this._wakeFs) {
+          this._wakeFs = false;
+          if (this.settings && this.settings.awakeDur > 0) toast(I18N.t('awakeExitFs'));
+        }
+      } else {
+        this._wakeFs = true;   // 进入全屏（含为常亮自动进入）
       }
     });
 
