@@ -209,6 +209,49 @@ input,select,textarea{font-family:inherit; font-size:14px; color:inherit}
 .rt-ph.off{opacity:.38; text-decoration:line-through}
 select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--line); background:var(--bg); outline:none; font-size:12.5px}
 
+/* ---------- 顶栏固定 / 自动隐藏 ----------
+   📌 常驻：工具栏在文档流中，撑开顶部（默认，原行为）
+   📍 浮动：工具栏绝对定位、悬停页面顶部时才滑出，正文占满整个高度 */
+#reader{position:relative}
+.rtoolbar{transition:transform .2s ease, opacity .2s ease}
+#reader.auto-hide .rtoolbar{
+  position:absolute; top:0; left:0; right:0; z-index:30;
+  transform:translateY(-102%); opacity:0; pointer-events:none;
+  box-shadow:0 6px 18px rgba(0,0,0,.12);
+}
+#reader.auto-hide.bar-show .rtoolbar{transform:none; opacity:1; pointer-events:auto}
+/* 顶部悬停感应带：仅自动隐藏时启用 */
+#bar-hotzone{
+  display:none; position:absolute; top:0; left:0; right:0; height:14px; z-index:29;
+}
+#reader.auto-hide #bar-hotzone{display:block}
+#reader.auto-hide.bar-show #bar-hotzone{display:none}
+/* 固定按钮：常驻时高亮，浮动时淡出 */
+#btn-pin.on{background:var(--accent-soft); color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent)}
+
+/* ---------- 设置 · 快捷键 ---------- */
+.key-bindings{
+  border:1px solid var(--line); border-radius:10px; padding:2px 12px; margin-bottom:14px;
+  background:var(--bg);
+}
+.kb-row{display:flex; align-items:center; gap:6px; padding:8px 0; border-bottom:1px dashed var(--line); flex-wrap:wrap}
+.kb-row:last-child{border-bottom:none}
+.kb-label{min-width:60px; font-size:13px; color:var(--muted); flex:none}
+.kb-keys{display:flex; gap:5px; flex:1; min-width:0; flex-wrap:wrap}
+.kb-keys kbd{
+  background:var(--btn-bg); color:var(--btn-fg); border:1px solid var(--line);
+  border-radius:6px; padding:2px 8px; font-size:12px; font-family:inherit; cursor:pointer;
+  user-select:none; -webkit-user-select:none;
+}
+.kb-keys kbd:hover{border-color:var(--danger); color:var(--danger)}
+.kb-keys .kb-empty{font-size:12px; color:var(--muted)}
+.kb-btn{
+  flex:none; width:26px; height:26px; border-radius:7px; font-size:13px; line-height:1;
+  background:var(--btn-bg); color:var(--btn-fg); border:1px solid transparent;
+}
+.kb-btn:hover{filter:brightness(1.06)}
+.kb-row.capturing .kb-add{background:var(--accent); color:#fff; width:auto; padding:0 8px; font-size:12px}
+
 #page-frame{
   flex:1; min-height:0; position:relative; overflow:hidden;
   background:var(--reader-bg);
@@ -225,7 +268,15 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
   -webkit-user-select:text;
   -webkit-touch-callout:none; /* 移动端不弹系统选中菜单，改用自绘划词工具栏 */
 }
+/* 键盘翻页 / 点击正文后浏览器可能给可聚焦的正文区画焦点框，阅读时不需要 */
+#page-content:focus, #page-content:focus-visible{outline:none}
 #page-content .para{margin:0 0 .35em; text-indent:2em}
+/* 章首页标题：章节号 + 章节名（页宽/字号/行高与分页计算保持一致） */
+#page-content .page-title{
+  font-size:1.12em; font-weight:700; line-height:1.55;
+  margin:0 0 .7em; text-indent:0; text-align:left; letter-spacing:.02em;
+  color:var(--reader-fg);
+}
 /* 折衷保障：个别页面内容若仍超出可视区（浏览器真实断行与估算偏差），
    允许在页内向下滚动看全最后一行；正常页不启用，外观与行为无变化。
    加大底部留白：让滚动行程更长、最后一行上方有充足空隙，即使溢出较多也能完整看到
@@ -369,6 +420,23 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
 #toc-list li:hover{background:var(--accent-soft)}
 #toc-list li.current{color:var(--accent); font-weight:700}
 #toc-list li .ci{color:var(--muted); font-size:11.5px; margin-right:8px}
+/* 分卷目录：卷标题可折叠，卷内章节缩进显示 */
+#toc-list li.toc-vol{
+  position:sticky; top:0; z-index:1;
+  display:flex; align-items:center; gap:8px;
+  margin:8px 0 4px; padding:8px 10px;
+  background:var(--accent-soft); color:var(--accent);
+  font-weight:700; font-size:13px;
+}
+#toc-list li.toc-vol:first-child{margin-top:0}
+#toc-list li.toc-vol:hover{background:color-mix(in srgb, var(--accent) 16%, transparent)}
+#toc-list li.toc-vol .tv-arrow{flex:none; font-size:10px; transition:transform .15s ease}
+#toc-list li.toc-vol.collapsed .tv-arrow{transform:rotate(-90deg)}
+#toc-list li.toc-vol .tv-title{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#toc-list li.toc-vol .tv-count{flex:none; font-weight:400; font-size:11.5px; color:var(--muted)}
+#toc-list li.toc-ch{font-size:13.5px}
+#toc-list li.toc-ch.under-vol{padding-left:26px}
+#toc-list li.toc-ch.vol-hide{display:none}
 
 /* 导入进度覆盖层 */
 #progress-overlay{position:fixed; inset:0; background:var(--overlay); z-index:95;
@@ -398,7 +466,8 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
 @media (max-width:960px){
   #dict-panel{
     top:auto; bottom:30px; height:58vh; width:100%; border-top:1px solid var(--line); border-left:none;
-    transform:translateY(103%);
+    /* 隐藏位移要同时越过底部状态栏（30px），否则面板会露出并盖住状态栏 */
+    transform:translateY(calc(100% + 32px));
   }
   #dict-panel.open{transform:none}
   #page-content{padding-top:20px; padding-bottom:24px}
@@ -457,6 +526,8 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
 
   <!-- ===== 阅读区 ===== -->
   <main id="main">
+    <!-- 顶栏自动隐藏时，鼠标移到页面顶部即唤出工具栏 -->
+    <div id="bar-hotzone" aria-hidden="true"></div>
     <div id="reader-empty">
       <div class="big">📖</div>
       <div class="hint">
@@ -549,6 +620,7 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
         <button class="btn icon" id="btn-page-next" data-i18n-title="pageNextTitle">›</button>
         <span class="rt-percent" id="rt-percent" data-i18n-title="percentTitle">0%</span>
         <button class="btn ghost icon rt-ph" id="btn-phonetic" data-i18n-title="phTitle">Aa</button>
+        <button class="btn ghost icon on" id="btn-pin" aria-pressed="true">📌</button>
         <button class="btn ghost icon" id="btn-more" data-i18n-title="moreTitle">⋯</button>
         <button class="btn ghost icon" id="btn-settings" data-i18n-title="settingsTitle">⚙</button>
       </div>
@@ -564,7 +636,7 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
     <span id="st-chapter"></span>
     <span id="st-tts"></span>
     <span style="flex:1"></span>
-    <span id="st-hint" data-i18n="stHint">划选正文 → 翻译 / 朗读 · 键盘 ← → 翻页</span>
+    <span id="st-hint">划选正文 → 翻译 / 朗读 · 键盘 ← / → 翻页</span>
   </footer>
 </div>
 
@@ -640,6 +712,10 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
           <select id="set-fontfamily"><option value="serif" data-i18n="font_serif">宋体系 (衬线)</option><option value="kai" data-i18n="font_kai">楷体系</option><option value="sans" data-i18n="font_sans">黑体系 (无衬线)</option></select></div>
         <div class="form-row"><label data-i18n="setPageWidth">页宽</label><select id="set-pagewidth"></select></div>
       </div>
+      <div class="form-row"><label data-i18n="setPageTitle">标签页标题</label>
+        <input id="set-pagetitle" type="text" data-i18n-ph="setPageTitlePh" placeholder="留空使用默认标题" autocomplete="off" maxlength="60"></div>
+      <div class="form-row" style="margin-bottom:6px"><label data-i18n="setShortcuts">快捷键（点击按键删除，＋ 添加）</label></div>
+      <div id="key-bindings" class="key-bindings"></div>
       <div class="form-check"><input type="checkbox" id="set-hitzone"><label data-i18n="setHitZone">点击页面左右两侧边翻页</label></div>
       <div class="form-check"><input type="checkbox" id="set-indent"><label data-i18n="setIndent">段落首行缩进两字符</label></div>
       <div class="form-row"><label data-i18n="setSelAction">划词操作</label>
@@ -853,7 +929,7 @@ const I18N_LANGS = {
     percentTitle: '全书进度',
     phTitle: '隐藏/显示音标与词性',
     noBook: '未打开书籍',
-    stHint: '划选正文 → 翻译 / 朗读 · 键盘 ← → 翻页',
+    stHint: '划选正文 → 翻译 / 朗读 · 键盘 {prev} / {next} 翻页',
     stReading: '🔊 朗读中…',
     lastPage: '已是最后一页',
     firstPage: '已是第一页',
@@ -921,6 +997,15 @@ const I18N_LANGS = {
     setTitle: '⚙ 阅读设置',
     setTheme: '主题', setFontSize: '字号', setLineHeight: '行距', setFont: '字体',
     setPageWidth: '页宽',
+    setPageTitle: '标签页标题',
+    setPageTitlePh: '留空使用默认标题',
+    setShortcuts: '快捷键（点击按键删除，＋ 添加）',
+    kbPrev: '上一页', kbNext: '下一页', kbStart: '章首', kbEnd: '章末',
+    kbAdd: '添加按键', kbReset: '恢复默认', kbCapture: '请按键…', kbEmpty: '未设置', kbRemove: '点击删除该按键',
+    pinOn: '顶栏已固定（点击改为悬停显示）',
+    pinOff: '顶栏自动隐藏（点击固定）',
+    pinOnToast: '顶栏已固定',
+    pinOffToast: '顶栏已取消固定：鼠标移到页面顶部才显示',
     setHitZone: '点击页面左右两侧边翻页',
     setIndent: '段落首行缩进两字符',
     setSelAction: '划词操作',
@@ -946,6 +1031,8 @@ const I18N_LANGS = {
       '<div class="key-row"><span>移动端：左右滑动</span><span>翻页</span></div>' +
       '<div class="key-row"><span>「☰」按钮</span><span>打开 / 收起书库</span></div>' +
       '<div class="key-row"><span>长按 / 划选文字</span><span>翻译、朗读</span></div>' +
+      '<div class="key-row"><span><kbd>📌</kbd></span><span>固定 / 自动隐藏顶栏</span></div>' +
+      '<p class="muted-text">快捷键与标签页标题可在「阅读设置」中自定义。</p>' +
       '<h4>性能说明</h4>' +
       '<p>章节切分在后台 Web Worker 线程异步执行（多线程），主界面不卡顿；分页排版采用测量分页，翻页流畅。</p>',
     // 确认框 / 进度
@@ -1067,7 +1154,7 @@ const I18N_LANGS = {
     percentTitle: 'Whole-book progress',
     phTitle: 'Show/hide phonetic & POS',
     noBook: 'No book open',
-    stHint: 'Select text → translate / speak · ← → keys turn pages',
+    stHint: 'Select text → translate / speak · {prev} / {next} keys turn pages',
     stReading: '🔊 Reading…',
     lastPage: 'This is the last page',
     firstPage: 'This is the first page',
@@ -1131,6 +1218,15 @@ const I18N_LANGS = {
     setTitle: '⚙ Reader settings',
     setTheme: 'Theme', setFontSize: 'Font size', setLineHeight: 'Line height', setFont: 'Font',
     setPageWidth: 'Page width',
+    setPageTitle: 'Browser tab title',
+    setPageTitlePh: 'Leave empty for the default title',
+    setShortcuts: 'Shortcuts (click a key to remove, + to add)',
+    kbPrev: 'Previous page', kbNext: 'Next page', kbStart: 'Chapter start', kbEnd: 'Chapter end',
+    kbAdd: 'Add key', kbReset: 'Reset', kbCapture: 'Press a key…', kbEmpty: 'unset', kbRemove: 'Click to remove this key',
+    pinOn: 'Toolbar pinned (click to auto-hide)',
+    pinOff: 'Toolbar auto-hides (click to pin)',
+    pinOnToast: 'Toolbar pinned',
+    pinOffToast: 'Toolbar unpinned: hover near the top of the page to show it',
     setHitZone: 'Tap left/right edges of the page to turn pages',
     setIndent: 'Indent the first line of each paragraph',
     setSelAction: 'Selection action',
@@ -1155,6 +1251,8 @@ const I18N_LANGS = {
       '<div class="key-row"><span>Mobile: swipe left / right</span><span>Turn pages</span></div>' +
       '<div class="key-row"><span>«☰» button</span><span>Open / close the library</span></div>' +
       '<div class="key-row"><span>Select text</span><span>Translate, speak</span></div>' +
+      '<div class="key-row"><span><kbd>📌</kbd></span><span>Pin / auto-hide the toolbar</span></div>' +
+      '<p class="muted-text">Shortcuts and the browser tab title can be customized in Reader settings.</p>' +
       '<h4>Performance</h4>' +
       '<p>Chapter splitting runs asynchronously on a background Web Worker thread (multithreading), so the UI stays smooth; pagination is measured for fluid page turns.</p>',
     cfTitle: 'Confirm',
@@ -1500,9 +1598,14 @@ function decodeTextBytes(buf) {
 /* ---------- 4. 章节切分（纯函数，同时用于 Web Worker 与主线程降级） ---------- */
 /**
  * 把整本小说文本切分为章节数组。
- * 规则: 优先按「第X章/卷/节」等标题行识别；标题行识别不足 2 个时，
- *       退化为按固定字数切块，保证任何文本都能阅读。
- * 返回: { chapters: [{index, title, paras: string[], chars}], totalChars }
+ * 规则: 优先按「第X章/节/回」等标题行识别，「第X卷」作为卷边界（不当作章节）；
+ *       第一个标题之前的内容（书名 / 作者 / 简介）作为「作品信息」章，可以正常阅读；
+ *       标题行识别不足 2 个时，退化为按固定字数切块，保证任何文本都能阅读。
+ * 返回: {
+ *   chapters: [{index, title, paras, chars, volume, volumeIndex}],
+ *   totalChars,
+ *   volumes: [{title, start}]   // 卷标题 + 卷内第一章下标（目录折叠分组用）
+ * }
  */
 function splitChapters(text, opts = {}) {
   const targetChars = opts.targetChars || 4500;
@@ -1511,37 +1614,50 @@ function splitChapters(text, opts = {}) {
   const lines = t.split('\n');
 
   // --- 标题行识别 ---
+  const volumeRe = /^\s*(?:第\s*[0-9０-９零一二三四五六七八九十百千万两〇]+\s*卷|卷\s*[0-9０-９零一二三四五六七八九十百千万两〇]+)[^\n]{0,60}\s*$/;
   const titleRe = [
-    /^\s*第\s*[0-9０-９零一二三四五六七八九十百千万两〇]+\s*[章节卷回部集篇][^\n]{0,60}\s*$/,  // 第十二章 风云
+    /^\s*第\s*[0-9０-９零一二三四五六七八九十百千万两〇]+\s*[章节回部集篇][^\n]{0,60}\s*$/,  // 第十二章 风云
     /^\s*(?:序\s*章|楔\s*子|前\s*言|引\s*子|题\s*记|尾\s*声|后\s*记|番\s*外|终\s*章|结\s*语)\s*$/, // 章节性段落
     /^\s*(?:chapter|volume|part|book)\s+[0-9]{1,5}\s*[.:：]?\s*[^\n]{0,60}$/i,                  // Chapter 12: ...
   ];
   const isTitle = (s) => titleRe.some(re => re.test(s));
+  const isVolume = (s) => volumeRe.test(s);
 
-  // 第一章的标题可能带后续内容（如「第一章 风起 洛城客栈中……」），只在确实无匹配时兜底
-  const idx = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (isTitle(lines[i]) && lines[i].length <= 80) idx.push(i);
+  // 卷 / 章标题共同构成切分边界；识别不足 2 个时退回按字数切块
+  let headingCount = 0;
+  for (const l of lines) {
+    if (l.length <= 80 && (isTitle(l) || isVolume(l))) headingCount++;
   }
 
-  let chapters;
-  if (idx.length >= 2) {
-    // 主/卷目录中「第X章」跟正文分离的常见处理：标题行并入下一个正文段之前，跳过重复的空标题
-    const starts = [...idx, lines.length];
-    chapters = [];
-    let title = null;
-    let paras = [];
-    for (let i = 0; i < lines.length; i++) {
-      if (isTitle(lines[i]) && lines[i].length <= 80) {
-        if (title !== null) chapters.push({ title, paras });
-        title = lines[i].replace(/^\s+|\s+$/g, '');
-        paras = [];
+  let chapters = null;
+  if (headingCount >= 2) {
+    // 逐行归类：卷标题开新卷；章标题开新章；其余行归入当前章。
+    // 第一个标题之前的内容（书名 / 作者 / 简介）作为「作品信息」章，避免开头信息无法阅读。
+    const sections = [];
+    let cur = { kind: 'preface', title: null, lines: [], volume: null, volumeIndex: -1 };
+    let volTitle = null, volIndex = -1, volSeq = 0;
+    for (const line of lines) {
+      const s = line.trim();
+      if (s.length <= 80 && isVolume(s)) {
+        if (cur.lines.length) sections.push(cur);
+        volTitle = s;
+        volIndex = volSeq++;
+        cur = { kind: 'volume', title: s, lines: [], volume: volTitle, volumeIndex: volIndex };
+      } else if (s.length <= 80 && isTitle(s)) {
+        if (cur.lines.length) sections.push(cur);
+        cur = { kind: 'chapter', title: s, lines: [], volume: volTitle, volumeIndex: volIndex };
       } else {
-        const s = lines[i].replace(/\s+/g, '').trim();
-        if (s) paras.push(s);
+        const p = s.replace(/\s+/g, '').trim();
+        if (p) cur.lines.push(p);
       }
     }
-    if (title !== null) chapters.push({ title, paras });
+    if (cur.lines.length) sections.push(cur);
+    chapters = sections.filter(sec => sec.lines.length).map(sec => ({
+      title: sec.kind === 'preface' ? '作品信息' : sec.title,
+      paras: sec.lines,
+      volume: sec.kind === 'preface' ? null : (sec.volume || null),
+      volumeIndex: sec.kind === 'preface' ? -1 : (typeof sec.volumeIndex === 'number' ? sec.volumeIndex : -1),
+    }));
     if (chapters.length === 0) chapters = null; // 全空：退回按块切分
   }
 
@@ -1596,13 +1712,31 @@ function splitChapters(text, opts = {}) {
     .filter(c => c.paras.length > 0)
     .map((c, i) => {
       const chars = c.paras.reduce((n, p) => n + p.length, 0);
-      return { index: i, title: c.title || `第 ${i + 1} 节`, paras: c.paras, chars };
+      return {
+        index: i,
+        title: c.title || `第 ${i + 1} 节`,
+        paras: c.paras,
+        chars,
+        volume: c.volume || null,
+        volumeIndex: typeof c.volumeIndex === 'number' ? c.volumeIndex : -1,
+      };
     });
   if (!chapters.length) {
-    chapters = [{ index: 0, title: '正文', paras: ['（没有可显示的正文内容）'], chars: 0 }];
+    chapters = [{ index: 0, title: '正文', paras: ['（没有可显示的正文内容）'], chars: 0, volume: null, volumeIndex: -1 }];
   }
+
+  // 卷边界：同一卷的章节连续排列，记录每卷标题与卷内首个章节下标（目录分组 / 折叠）
+  const volumes = [];
+  let lastVol = -1;
+  chapters.forEach((c, i) => {
+    if (c.volumeIndex >= 0 && c.volumeIndex !== lastVol) {
+      volumes.push({ title: c.volume || `第 ${c.volumeIndex + 1} 卷`, start: i });
+      lastVol = c.volumeIndex;
+    }
+  });
+
   const totalChars = chapters.reduce((n, c) => n + c.chars, 0);
-  return { chapters, totalChars };
+  return { chapters, totalChars, volumes };
 }
 
 /* ---------- 5. 后台 Worker（多线程） ---------- */
@@ -1614,7 +1748,7 @@ self.onmessage = (e) => {
   const { id, text } = e.data || {};
   try {
     const r = splitChapters(text);
-    self.postMessage({ id, ok: true, chapters: r.chapters, totalChars: r.totalChars });
+    self.postMessage({ id, ok: true, chapters: r.chapters, totalChars: r.totalChars, volumes: r.volumes });
   } catch (err) {
     self.postMessage({ id, ok: false, error: String(err && err.stack || err) });
   }
@@ -1661,7 +1795,7 @@ class TextWorker {
       return new Promise(resolve => {
         setTimeout(() => {
           const r = splitChapters(text);
-          resolve({ chapters: r.chapters, totalChars: r.totalChars });
+          resolve({ chapters: r.chapters, totalChars: r.totalChars, volumes: r.volumes });
         }, 0);
       });
     }
@@ -1758,12 +1892,13 @@ class DataManager {
     progress.setSub(I18N.t('progWorker'));
     progress.set(0.05);
     // 切分（Web Worker 线程 / 主线程降级）
-    const { chapters, totalChars } = await this._worker.split(text);
+    const { chapters, totalChars, volumes } = await this._worker.split(text);
     progress.setSub(I18N.t('progOrganize'));
     book.chapterCount = chapters.length;
     book.totalChars = totalChars;
     book.chapterChars = chapters.map(c => c.chars);
     book.chapterTitles = chapters.map(c => c.title);
+    book.volumes = Array.isArray(volumes) ? volumes : [];
     // 写入数据库（异步分批）
     progress.show(I18N.t('progWrite'));
     const list = chapters.map((c, i) => ({
@@ -16013,7 +16148,7 @@ class ChapterPager {
     this.maxLines = Math.max(1, Math.floor(this.availH / this.lineH));
   }
 
-  async paginate(paras) {
+  async paginate(paras, title) {
     const pages = [];
     let group = [];          // 正在填充的页
     let groupStartChar = 0;
@@ -16034,6 +16169,20 @@ class ChapterPager {
     };
     let lineCount = 0;
     const maxW = Math.max(80, this.pageW); // pageW 已扣除内边距
+
+    // 章首标题：首页顶部显示「第X章 章节名」，按与 CSS 相同的字号/行高预留高度，
+    // 避免标题挤占正文导致首页最后几行被裁切（CSS: .page-title，1.12em / 1.55 / 下边距 .7em）
+    let titleH = 0;
+    const ttl = String(title || '').trim();
+    if (ttl) {
+      const tSize = Math.max(12, Math.round(this.fontSize * 1.12));
+      const tLineH = Math.round(tSize * 1.55);
+      const tFont = '700 ' + tSize + 'px ' + this.fontFamily;
+      let tLines = 1;
+      try { tLines = (await this.breaker.breakLines(ttl, maxW, tFont, tSize)).length || 1; } catch (e) { tLines = 1; }
+      titleH = tLines * tLineH + Math.round(this.fontSize * 0.7);
+    }
+    used = titleH;
 
     for (let p = 0; p < paras.length; p++) {
       const text = paras[p];
@@ -16093,6 +16242,26 @@ class ChapterPager {
 }
 
 /* ---------- 11. 阅读控制器 Reader ---------- */
+/* 默认快捷键（值对应 KeyboardEvent.key，可在设置中自定义） */
+const KEY_ACTIONS = ['prev', 'next', 'chapterStart', 'chapterEnd'];
+const DEFAULT_KEYMAP = {
+  prev: ['ArrowLeft', 'PageUp'],
+  next: ['ArrowRight', 'PageDown', ' '],
+  chapterStart: ['Home'],
+  chapterEnd: ['End'],
+};
+/** 把存储 / 备份中的快捷键配置规整为完整映射（缺失或损坏的动作回退默认） */
+function normalizeKeyMap(m) {
+  const src = (m && typeof m === 'object') ? m : {};
+  const out = {};
+  for (const a of KEY_ACTIONS) {
+    out[a] = Array.isArray(src[a])
+      ? src[a].filter(k => typeof k === 'string' && k)
+      : DEFAULT_KEYMAP[a].slice();
+  }
+  return out;
+}
+
 class Reader {
   constructor(bus) {
     this.bus = bus;
@@ -16196,7 +16365,7 @@ class Reader {
   async _ensurePages(chapterIndex) {
     if (this._pagesCache.has(chapterIndex)) return this._pagesCache.get(chapterIndex);
     const chapter = this.chapters[chapterIndex];
-    const result = await this._pagerFor().paginate(chapter.paras);
+    const result = await this._pagerFor().paginate(chapter.paras, chapter.title);
     this._pagesCache.set(chapterIndex, result);
     // 只保留最近 3 章的分页缓存，防止内存膨胀
     if (this._pagesCache.size > 3) {
@@ -16296,6 +16465,13 @@ class Reader {
     root.textContent = '';
     if (!page) return;
     const frag = document.createDocumentFragment();
+    // 章首页顶部显示章节号与章节名（分页时已为其预留高度）
+    if (this.pageIndex === 0 && chapter.title) {
+      const h = document.createElement('div');
+      h.className = 'page-title';
+      h.textContent = chapter.title;
+      frag.appendChild(h);
+    }
     let cur = null;
     for (let li = 0; li < page.lines.length; li++) {
       const ln = page.lines[li];
@@ -16583,17 +16759,19 @@ class Reader {
   _hasSelection() { const s = window.getSelection(); return s && s.toString().trim().length > 0; }
   _onKey(e) {
     if (!this.book) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;   // 保留浏览器/系统组合键
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     // 有弹窗打开时不翻页
     for (const m of document.querySelectorAll('.modal-backdrop')) {
       if (m.style.display !== 'none') return;
     }
-    const k = e.key;
-    if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') { e.preventDefault(); this.nextPage(); }
-    else if (k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); this.prevPage(); }
-    else if (k === 'Home') { e.preventDefault(); this.gotoChapter(this.chapterIndex, 0); }
-    else if (k === 'End') { e.preventDefault(); this.gotoChapter(this.chapterIndex, 1e9); }
+    const map = (this.settings && this.settings.keyMap) || DEFAULT_KEYMAP;
+    const hit = act => Array.isArray(map[act]) && map[act].includes(e.key);
+    if (hit('next')) { e.preventDefault(); this.nextPage(); }
+    else if (hit('prev')) { e.preventDefault(); this.prevPage(); }
+    else if (hit('chapterStart')) { e.preventDefault(); this.gotoChapter(this.chapterIndex, 0); }
+    else if (hit('chapterEnd')) { e.preventDefault(); this.gotoChapter(this.chapterIndex, 1e9); }
   }
   _maybeShowSelection(e) {
     const sel = window.getSelection();
@@ -16726,6 +16904,7 @@ class App {
     this.settings = { ...App.DEFAULT_SETTINGS };
     this._activeBookId = null;
     this._searchTerm = '';
+    this._tocCollapsed = new Set();   // 目录中已折叠的卷（按卷起始章节下标记录）
   }
 
   static get DEFAULT_SETTINGS() {
@@ -16743,6 +16922,9 @@ class App {
       ttsRate: 1,
       ttsVoice: '',
       awakeDur: 0,          // 屏幕常亮时长（分钟）：0=默认（跟随系统熄屏），5/30/60/120/300 分钟
+      toolbarPinned: true,  // 顶栏是否常驻（false = 仅在鼠标靠近页面顶部时滑出）
+      keyMap: normalizeKeyMap(null),   // 翻页 / 章首章末快捷键
+      pageTitle: '',        // 自定义浏览器标签页标题（空 = 使用应用默认标题）
     };
   }
 
@@ -16811,6 +16993,7 @@ class App {
     for (const key of Object.keys(App.DEFAULT_SETTINGS)) {
       this.settings[key] = await this.data.getSetting(key, App.DEFAULT_SETTINGS[key]);
     }
+    this.settings.keyMap = normalizeKeyMap(this.settings.keyMap);
     // ---- 界面语言（设置优先，未设置时跟随浏览器语言）----
     const detect = () => (navigator.language || navigator.languages?.[0] || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
     I18N.lang = (this.settings.lang === 'zh' || this.settings.lang === 'en') ? this.settings.lang : detect();
@@ -16819,7 +17002,9 @@ class App {
       this.data.setSetting('lang', I18N.lang).catch(() => {});
     }
     I18N.applyStatic();
+    this._applyDocTitle();
     this._applySettings();
+    this._applyToolbarPin(this.settings.toolbarPinned !== false, false);
 
     // ---- 词典（离线策略注册表 + 自定义词条）----
     const custom = await this.data.getSetting('customDict', []);
@@ -16839,6 +17024,8 @@ class App {
     this._buildDictPanel();
     this._bindUI();
     this._syncPhoneticUI();
+    this._renderKeyBindings();
+    this._syncStatusHint();
     await this.refreshBooks();
 
     // ---- 状态栏 ----
@@ -16894,6 +17081,15 @@ class App {
       this._syncSettingsDialog();
     } else if (key === 'ttsVoice') {
       this.reader.tts.setVoice(value);
+    } else if (key === 'pageTitle') {
+      this._applyDocTitle();
+      this._syncSettingsDialog();
+    } else if (key === 'keyMap') {
+      this._renderKeyBindings();
+      this._syncStatusHint();
+      this._syncSettingsDialog();
+    } else if (key === 'toolbarPinned') {
+      this._applyToolbarPin(!!value);
     } else {
       this._syncSettingsDialog();
     }
@@ -16909,9 +17105,113 @@ class App {
     $('#set-lineheight').value = String(this.settings.lineHeight);
     $('#set-fontfamily').value = this.settings.fontFamily;
     $('#set-pagewidth').value = String(this.settings.pageWidth);
+    const pt = $('#set-pagetitle');
+    if (pt && document.activeElement !== pt) pt.value = this.settings.pageTitle || '';
     $('#set-hitzone').checked = !!this.settings.hitZone;
     $('#set-indent').checked = !!this.settings.indent;
     $('#set-selaction').value = this.settings.selAction;
+  }
+
+  /* ---------- 浏览器标签页标题 ---------- */
+  _applyDocTitle() {
+    const custom = String(this.settings.pageTitle || '').trim();
+    document.title = custom || I18N.t('appTitle');
+  }
+  /* ---------- 状态栏提示（随快捷键设置更新） ---------- */
+  _syncStatusHint() {
+    const el = $('#st-hint');
+    if (!el) return;
+    const map = normalizeKeyMap(this.settings.keyMap);
+    const one = keys => (keys && keys.length ? App._fmtKey(keys[0]) : '—');
+    el.textContent = I18N.t('stHint', { prev: one(map.prev), next: one(map.next) });
+  }
+
+  /* ---------- 顶栏：固定 / 自动隐藏 ---------- */
+  _syncPinUI() {
+    const btn = $('#btn-pin');
+    if (!btn) return;
+    const pinned = this.settings.toolbarPinned !== false;
+    btn.classList.toggle('on', pinned);
+    btn.textContent = pinned ? '📌' : '📍';
+    btn.title = I18N.t(pinned ? 'pinOn' : 'pinOff');
+    btn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+  }
+  /** 应用固定状态；reflow=true 时（有书）重新分页以适配新增/释放的工具栏高度 */
+  _applyToolbarPin(pinned, reflow = true) {
+    const root = $('#reader');
+    if (!root) return;
+    root.classList.toggle('auto-hide', !pinned);
+    root.classList.remove('bar-show');
+    this._syncPinUI();
+    if (reflow && this.reader && this.reader.book) {
+      requestAnimationFrame(() => requestAnimationFrame(() => this.reader.applySettings(this.settings)));
+    }
+  }
+
+  /* ---------- 快捷键自定义 ---------- */
+  static _fmtKey(k) {
+    return ({ ' ': 'Space', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+      PageUp: 'PgUp', PageDown: 'PgDn', Escape: 'Esc', '\\': '\\' })[k]
+      || (k.length === 1 ? k.toUpperCase() : k);
+  }
+  _renderKeyBindings() {
+    const host = $('#key-bindings');
+    if (!host) return;
+    const map = normalizeKeyMap(this.settings.keyMap);
+    const labels = { prev: I18N.t('kbPrev'), next: I18N.t('kbNext'), chapterStart: I18N.t('kbStart'), chapterEnd: I18N.t('kbEnd') };
+    host.innerHTML = '';
+    for (const act of KEY_ACTIONS) {
+      const row = document.createElement('div');
+      row.className = 'kb-row';
+      row.dataset.act = act;
+      const label = document.createElement('span');
+      label.className = 'kb-label';
+      label.textContent = labels[act];
+      const keys = document.createElement('span');
+      keys.className = 'kb-keys';
+      if (!map[act].length) {
+        const em = document.createElement('span');
+        em.className = 'kb-empty';
+        em.textContent = I18N.t('kbEmpty');
+        keys.appendChild(em);
+      }
+      for (const k of map[act]) {
+        const kb = document.createElement('kbd');
+        kb.textContent = App._fmtKey(k);
+        kb.title = I18N.t('kbRemove');
+        kb.onclick = () => {
+          const next = normalizeKeyMap(this.settings.keyMap);
+          next[act] = next[act].filter(x => x !== k);
+          this.setSetting('keyMap', next);
+        };
+        keys.appendChild(kb);
+      }
+      const add = document.createElement('button');
+      add.className = 'kb-btn kb-add';
+      add.textContent = '＋';
+      add.title = I18N.t('kbAdd');
+      add.onclick = () => this._beginKeyCapture(act);
+      const reset = document.createElement('button');
+      reset.className = 'kb-btn kb-reset';
+      reset.textContent = '↺';
+      reset.title = I18N.t('kbReset');
+      reset.onclick = () => {
+        const next = normalizeKeyMap(this.settings.keyMap);
+        next[act] = DEFAULT_KEYMAP[act].slice();
+        this.setSetting('keyMap', next);
+      };
+      row.append(label, keys, add, reset);
+      host.appendChild(row);
+    }
+    if (this._keyCapture) {
+      const row = host.querySelector(`.kb-row[data-act="${this._keyCapture.act}"] .kb-add`);
+      if (row) { row.textContent = I18N.t('kbCapture'); row.parentElement.classList.add('capturing'); }
+    }
+  }
+  /** 进入「记录按键」状态：下一次按键写入该动作（Esc 取消） */
+  _beginKeyCapture(act) {
+    this._keyCapture = { act };
+    this._renderKeyBindings();
   }
 
   /* ---------- 书库 ---------- */
@@ -17120,6 +17420,10 @@ class App {
     this.settings.lang = next;
     try { await this.data.setSetting('lang', next); } catch (e) { /* 设置项保底失败不阻塞切换 */ }
     I18N.applyStatic();
+    this._applyDocTitle();             // 标签页自定义标题（语言切换后保持）
+    this._syncPinUI();                 // 固定按钮提示语
+    this._renderKeyBindings();         // 快捷键动作名随语言更新
+    this._syncStatusHint();            // 状态栏快捷键提示
     this._renderBookList();            // 书库空状态 / 元信息文案
     this._renderDictTabs();            // 词典标签
     this._renderDict();                // 当前查询结果文案
@@ -17409,12 +17713,52 @@ class App {
   /* ---------- 目录 ---------- */
   _openToc() {
     if (!this.reader.book) return;
+    const book = this.reader.book;
     const ul = $('#toc-list');
     ul.innerHTML = '';
-    const titles = this.reader.book.chapterTitles || this.reader.chapters.map(c => c.title);
-    $('#toc-title').textContent = I18N.t('tocTitle') + ' · ' + this.reader.book.title + ' (' + titles.length + ')';
+    const titles = book.chapterTitles || this.reader.chapters.map(c => c.title);
+    $('#toc-title').textContent = I18N.t('tocTitle') + ' · ' + book.title + ' (' + titles.length + ')';
+
+    // 卷 → 章节下标范围；无卷书籍保持原扁平列表
+    const vols = Array.isArray(book.volumes) ? book.volumes.slice() : [];
+    const volStartOf = new Array(titles.length).fill(-1);   // 每一章所属卷的起始下标（-1 = 卷前 / 无卷）
+    vols.forEach((v, vi) => {
+      const end = vi + 1 < vols.length ? vols[vi + 1].start : titles.length;
+      for (let i = Math.max(0, v.start); i < end && i < titles.length; i++) volStartOf[i] = v.start;
+    });
+    const volByStart = new Map(vols.map(v => [v.start, v]));
+    const curVolStart = this.reader.chapterIndex >= 0 ? volStartOf[this.reader.chapterIndex] : -1;
+    if (curVolStart >= 0) this._tocCollapsed.delete(curVolStart);   // 当前卷总是展开
+    const collapsed = this._tocCollapsed;
+
+    let lastVol = -2;   // -2 与「无卷」的 -1 区分
     titles.forEach((t, i) => {
+      const vs = volStartOf[i];
+      if (vs >= 0 && vs !== lastVol) {
+        const v = volByStart.get(vs);
+        const vi = vols.findIndex(x => x.start === vs);
+        const count = (vi + 1 < vols.length ? vols[vi + 1].start : titles.length) - vs;
+        const hd = document.createElement('li');
+        hd.className = 'toc-vol';
+        hd.dataset.vol = String(vs);
+        if (collapsed.has(vs)) hd.classList.add('collapsed');
+        hd.innerHTML = `<span class="tv-arrow">▾</span><span class="tv-title">${escapeHtml(v ? v.title : '')}</span>`
+          + `<span class="tv-count">${I18N.t('metaChap', { n: count })}</span>`;
+        hd.onclick = () => {
+          const nowCollapsed = !collapsed.has(vs);
+          if (nowCollapsed) collapsed.add(vs); else collapsed.delete(vs);
+          hd.classList.toggle('collapsed', nowCollapsed);
+          let el = hd.nextElementSibling;
+          while (el && !el.classList.contains('toc-vol')) {
+            el.classList.toggle('vol-hide', nowCollapsed);
+            el = el.nextElementSibling;
+          }
+        };
+        ul.appendChild(hd);
+        lastVol = vs;
+      }
       const li = document.createElement('li');
+      li.className = 'toc-ch' + (vs >= 0 ? ' under-vol' : '') + (vs >= 0 && collapsed.has(vs) ? ' vol-hide' : '');
       li.innerHTML = `<span class="ci">${i + 1}</span>${escapeHtml(t)}`;
       if (i === this.reader.chapterIndex) li.classList.add('current');
       li.onclick = () => {
@@ -17488,6 +17832,85 @@ class App {
     bindSelect('#set-selaction', 'selAction');
     $('#set-hitzone').onchange = e => this.setSetting('hitZone', e.target.checked);
     $('#set-indent').onchange = e => this.setSetting('indent', e.target.checked);
+
+    // 自定义浏览器标签页标题（输入即生效，防抖写入数据库）
+    $('#set-pagetitle').oninput = debounce((e) => {
+      this.setSetting('pageTitle', e.target.value.trim());
+    }, 350);
+
+    // 顶栏固定按钮：📌 常驻 / 📍 悬停顶部才显示
+    $('#btn-pin').onclick = async () => {
+      const pinned = !(this.settings.toolbarPinned !== false);
+      await this.setSetting('toolbarPinned', pinned);
+      toast(I18N.t(pinned ? 'pinOnToast' : 'pinOffToast'));
+    };
+
+    // 顶栏自动隐藏：鼠标靠近页面顶部 / 聚焦到工具栏内控件时滑出
+    const readerRoot = $('#reader');
+    const showBar = () => {
+      if (!readerRoot.classList.contains('auto-hide')) return;
+      clearTimeout(this.__barHideTimer);
+      readerRoot.classList.add('bar-show');
+    };
+    const hideBarSoon = (ms = 520) => {
+      if (!readerRoot.classList.contains('auto-hide')) return;
+      const bar = readerRoot.querySelector('.rtoolbar');
+      // 下拉框展开时保持顶栏可见，避免选项还在选、栏却收起
+      if (bar && bar.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
+      clearTimeout(this.__barHideTimer);
+      this.__barHideTimer = setTimeout(() => {
+        const b = readerRoot.querySelector('.rtoolbar');
+        if (b && b.contains(document.activeElement)) { try { document.activeElement.blur(); } catch (e) { /* noop */ } }
+        readerRoot.classList.remove('bar-show');
+      }, ms);
+    };
+    document.addEventListener('mousemove', (e) => {
+      if (!readerRoot.classList.contains('auto-hide')) return;
+      const main = $('#main').getBoundingClientRect();
+      const bar = readerRoot.querySelector('.rtoolbar');
+      const br = bar ? bar.getBoundingClientRect() : null;
+      const nearTop = e.clientY - main.top <= 26;
+      const overBar = readerRoot.classList.contains('bar-show') && br
+        && e.clientY >= br.top && e.clientY <= br.bottom && e.clientX >= br.left && e.clientX <= br.right;
+      if (nearTop || overBar) showBar(); else hideBarSoon();
+    });
+    readerRoot.addEventListener('focusin', (e) => {
+      if (e.target.closest && e.target.closest('.rtoolbar')) showBar();
+    });
+    // 点击工具栏以外的阅读区：立即收起（桌面 mousemove 之外的兜底，触屏也适用）
+    document.addEventListener('pointerdown', (e) => {
+      if (!readerRoot.classList.contains('bar-show')) return;
+      const bar = readerRoot.querySelector('.rtoolbar');
+      if (bar && !bar.contains(e.target)) {
+        if (bar.contains(document.activeElement)) { try { document.activeElement.blur(); } catch (err) { /* noop */ } }
+        readerRoot.classList.remove('bar-show');
+      }
+    }, { passive: true });
+    // 顶部感应带：鼠标移入即滑出；触屏点顶部延时滑出（避免同一击误触工具栏按钮）
+    const hot = $('#bar-hotzone');
+    hot.addEventListener('pointerenter', showBar);
+    hot.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (e.pointerType === 'touch') setTimeout(showBar, 260);
+      else showBar();
+    });
+
+    // 快捷键录制：捕获阶段截获下一次按键（不触发翻页）；Esc 取消
+    window.addEventListener('keydown', (e) => {
+      if (!this._keyCapture) return;
+      // 设置弹窗已关闭：录制状态作废，避免之后误吞阅读按键
+      if ($('#dlg-settings').style.display === 'none') { this._keyCapture = null; return; }
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === 'Escape') { this._keyCapture = null; this._renderKeyBindings(); return; }
+      if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) return;
+      const act = this._keyCapture.act;
+      const next = normalizeKeyMap(this.settings.keyMap);
+      // 同一个键只归属一个动作，避免冲突
+      for (const a of KEY_ACTIONS) next[a] = next[a].filter(k => k !== e.key);
+      next[act].push(e.key);
+      this._keyCapture = null;
+      this.setSetting('keyMap', next);
+    }, true);
 
     // 工具栏语速 / 发音人
     $('#tts-rate').onchange = e => this.setSetting('ttsRate', parseFloat(e.target.value));

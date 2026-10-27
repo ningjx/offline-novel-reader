@@ -153,7 +153,7 @@ class ChapterPager {
     this.maxLines = Math.max(1, Math.floor(this.availH / this.lineH));
   }
 
-  async paginate(paras) {
+  async paginate(paras, title) {
     const pages = [];
     let group = [];          // 正在填充的页
     let groupStartChar = 0;
@@ -174,6 +174,20 @@ class ChapterPager {
     };
     let lineCount = 0;
     const maxW = Math.max(80, this.pageW); // pageW 已扣除内边距
+
+    // 章首标题：首页顶部显示「第X章 章节名」，按与 CSS 相同的字号/行高预留高度，
+    // 避免标题挤占正文导致首页最后几行被裁切（CSS: .page-title，1.12em / 1.55 / 下边距 .7em）
+    let titleH = 0;
+    const ttl = String(title || '').trim();
+    if (ttl) {
+      const tSize = Math.max(12, Math.round(this.fontSize * 1.12));
+      const tLineH = Math.round(tSize * 1.55);
+      const tFont = '700 ' + tSize + 'px ' + this.fontFamily;
+      let tLines = 1;
+      try { tLines = (await this.breaker.breakLines(ttl, maxW, tFont, tSize)).length || 1; } catch (e) { tLines = 1; }
+      titleH = tLines * tLineH + Math.round(this.fontSize * 0.7);
+    }
+    used = titleH;
 
     for (let p = 0; p < paras.length; p++) {
       const text = paras[p];
@@ -233,6 +247,26 @@ class ChapterPager {
 }
 
 /* ---------- 11. 阅读控制器 Reader ---------- */
+/* 默认快捷键（值对应 KeyboardEvent.key，可在设置中自定义） */
+const KEY_ACTIONS = ['prev', 'next', 'chapterStart', 'chapterEnd'];
+const DEFAULT_KEYMAP = {
+  prev: ['ArrowLeft', 'PageUp'],
+  next: ['ArrowRight', 'PageDown', ' '],
+  chapterStart: ['Home'],
+  chapterEnd: ['End'],
+};
+/** 把存储 / 备份中的快捷键配置规整为完整映射（缺失或损坏的动作回退默认） */
+function normalizeKeyMap(m) {
+  const src = (m && typeof m === 'object') ? m : {};
+  const out = {};
+  for (const a of KEY_ACTIONS) {
+    out[a] = Array.isArray(src[a])
+      ? src[a].filter(k => typeof k === 'string' && k)
+      : DEFAULT_KEYMAP[a].slice();
+  }
+  return out;
+}
+
 class Reader {
   constructor(bus) {
     this.bus = bus;
@@ -336,7 +370,7 @@ class Reader {
   async _ensurePages(chapterIndex) {
     if (this._pagesCache.has(chapterIndex)) return this._pagesCache.get(chapterIndex);
     const chapter = this.chapters[chapterIndex];
-    const result = await this._pagerFor().paginate(chapter.paras);
+    const result = await this._pagerFor().paginate(chapter.paras, chapter.title);
     this._pagesCache.set(chapterIndex, result);
     // 只保留最近 3 章的分页缓存，防止内存膨胀
     if (this._pagesCache.size > 3) {
@@ -436,6 +470,13 @@ class Reader {
     root.textContent = '';
     if (!page) return;
     const frag = document.createDocumentFragment();
+    // 章首页顶部显示章节号与章节名（分页时已为其预留高度）
+    if (this.pageIndex === 0 && chapter.title) {
+      const h = document.createElement('div');
+      h.className = 'page-title';
+      h.textContent = chapter.title;
+      frag.appendChild(h);
+    }
     let cur = null;
     for (let li = 0; li < page.lines.length; li++) {
       const ln = page.lines[li];
@@ -723,17 +764,19 @@ class Reader {
   _hasSelection() { const s = window.getSelection(); return s && s.toString().trim().length > 0; }
   _onKey(e) {
     if (!this.book) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;   // 保留浏览器/系统组合键
     const t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     // 有弹窗打开时不翻页
     for (const m of document.querySelectorAll('.modal-backdrop')) {
       if (m.style.display !== 'none') return;
     }
-    const k = e.key;
-    if (k === 'ArrowRight' || k === 'PageDown' || k === ' ') { e.preventDefault(); this.nextPage(); }
-    else if (k === 'ArrowLeft' || k === 'PageUp') { e.preventDefault(); this.prevPage(); }
-    else if (k === 'Home') { e.preventDefault(); this.gotoChapter(this.chapterIndex, 0); }
-    else if (k === 'End') { e.preventDefault(); this.gotoChapter(this.chapterIndex, 1e9); }
+    const map = (this.settings && this.settings.keyMap) || DEFAULT_KEYMAP;
+    const hit = act => Array.isArray(map[act]) && map[act].includes(e.key);
+    if (hit('next')) { e.preventDefault(); this.nextPage(); }
+    else if (hit('prev')) { e.preventDefault(); this.prevPage(); }
+    else if (hit('chapterStart')) { e.preventDefault(); this.gotoChapter(this.chapterIndex, 0); }
+    else if (hit('chapterEnd')) { e.preventDefault(); this.gotoChapter(this.chapterIndex, 1e9); }
   }
   _maybeShowSelection(e) {
     const sel = window.getSelection();

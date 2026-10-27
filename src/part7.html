@@ -75,6 +75,7 @@ class App {
     this.settings = { ...App.DEFAULT_SETTINGS };
     this._activeBookId = null;
     this._searchTerm = '';
+    this._tocCollapsed = new Set();   // 目录中已折叠的卷（按卷起始章节下标记录）
   }
 
   static get DEFAULT_SETTINGS() {
@@ -92,6 +93,9 @@ class App {
       ttsRate: 1,
       ttsVoice: '',
       awakeDur: 0,          // 屏幕常亮时长（分钟）：0=默认（跟随系统熄屏），5/30/60/120/300 分钟
+      toolbarPinned: true,  // 顶栏是否常驻（false = 仅在鼠标靠近页面顶部时滑出）
+      keyMap: normalizeKeyMap(null),   // 翻页 / 章首章末快捷键
+      pageTitle: '',        // 自定义浏览器标签页标题（空 = 使用应用默认标题）
     };
   }
 
@@ -160,6 +164,7 @@ class App {
     for (const key of Object.keys(App.DEFAULT_SETTINGS)) {
       this.settings[key] = await this.data.getSetting(key, App.DEFAULT_SETTINGS[key]);
     }
+    this.settings.keyMap = normalizeKeyMap(this.settings.keyMap);
     // ---- 界面语言（设置优先，未设置时跟随浏览器语言）----
     const detect = () => (navigator.language || navigator.languages?.[0] || '').toLowerCase().startsWith('zh') ? 'zh' : 'en';
     I18N.lang = (this.settings.lang === 'zh' || this.settings.lang === 'en') ? this.settings.lang : detect();
@@ -168,7 +173,9 @@ class App {
       this.data.setSetting('lang', I18N.lang).catch(() => {});
     }
     I18N.applyStatic();
+    this._applyDocTitle();
     this._applySettings();
+    this._applyToolbarPin(this.settings.toolbarPinned !== false, false);
 
     // ---- 词典（离线策略注册表 + 自定义词条）----
     const custom = await this.data.getSetting('customDict', []);
@@ -188,6 +195,8 @@ class App {
     this._buildDictPanel();
     this._bindUI();
     this._syncPhoneticUI();
+    this._renderKeyBindings();
+    this._syncStatusHint();
     await this.refreshBooks();
 
     // ---- 状态栏 ----
@@ -243,6 +252,15 @@ class App {
       this._syncSettingsDialog();
     } else if (key === 'ttsVoice') {
       this.reader.tts.setVoice(value);
+    } else if (key === 'pageTitle') {
+      this._applyDocTitle();
+      this._syncSettingsDialog();
+    } else if (key === 'keyMap') {
+      this._renderKeyBindings();
+      this._syncStatusHint();
+      this._syncSettingsDialog();
+    } else if (key === 'toolbarPinned') {
+      this._applyToolbarPin(!!value);
     } else {
       this._syncSettingsDialog();
     }
@@ -258,9 +276,113 @@ class App {
     $('#set-lineheight').value = String(this.settings.lineHeight);
     $('#set-fontfamily').value = this.settings.fontFamily;
     $('#set-pagewidth').value = String(this.settings.pageWidth);
+    const pt = $('#set-pagetitle');
+    if (pt && document.activeElement !== pt) pt.value = this.settings.pageTitle || '';
     $('#set-hitzone').checked = !!this.settings.hitZone;
     $('#set-indent').checked = !!this.settings.indent;
     $('#set-selaction').value = this.settings.selAction;
+  }
+
+  /* ---------- 浏览器标签页标题 ---------- */
+  _applyDocTitle() {
+    const custom = String(this.settings.pageTitle || '').trim();
+    document.title = custom || I18N.t('appTitle');
+  }
+  /* ---------- 状态栏提示（随快捷键设置更新） ---------- */
+  _syncStatusHint() {
+    const el = $('#st-hint');
+    if (!el) return;
+    const map = normalizeKeyMap(this.settings.keyMap);
+    const one = keys => (keys && keys.length ? App._fmtKey(keys[0]) : '—');
+    el.textContent = I18N.t('stHint', { prev: one(map.prev), next: one(map.next) });
+  }
+
+  /* ---------- 顶栏：固定 / 自动隐藏 ---------- */
+  _syncPinUI() {
+    const btn = $('#btn-pin');
+    if (!btn) return;
+    const pinned = this.settings.toolbarPinned !== false;
+    btn.classList.toggle('on', pinned);
+    btn.textContent = pinned ? '📌' : '📍';
+    btn.title = I18N.t(pinned ? 'pinOn' : 'pinOff');
+    btn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+  }
+  /** 应用固定状态；reflow=true 时（有书）重新分页以适配新增/释放的工具栏高度 */
+  _applyToolbarPin(pinned, reflow = true) {
+    const root = $('#reader');
+    if (!root) return;
+    root.classList.toggle('auto-hide', !pinned);
+    root.classList.remove('bar-show');
+    this._syncPinUI();
+    if (reflow && this.reader && this.reader.book) {
+      requestAnimationFrame(() => requestAnimationFrame(() => this.reader.applySettings(this.settings)));
+    }
+  }
+
+  /* ---------- 快捷键自定义 ---------- */
+  static _fmtKey(k) {
+    return ({ ' ': 'Space', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+      PageUp: 'PgUp', PageDown: 'PgDn', Escape: 'Esc', '\\': '\\' })[k]
+      || (k.length === 1 ? k.toUpperCase() : k);
+  }
+  _renderKeyBindings() {
+    const host = $('#key-bindings');
+    if (!host) return;
+    const map = normalizeKeyMap(this.settings.keyMap);
+    const labels = { prev: I18N.t('kbPrev'), next: I18N.t('kbNext'), chapterStart: I18N.t('kbStart'), chapterEnd: I18N.t('kbEnd') };
+    host.innerHTML = '';
+    for (const act of KEY_ACTIONS) {
+      const row = document.createElement('div');
+      row.className = 'kb-row';
+      row.dataset.act = act;
+      const label = document.createElement('span');
+      label.className = 'kb-label';
+      label.textContent = labels[act];
+      const keys = document.createElement('span');
+      keys.className = 'kb-keys';
+      if (!map[act].length) {
+        const em = document.createElement('span');
+        em.className = 'kb-empty';
+        em.textContent = I18N.t('kbEmpty');
+        keys.appendChild(em);
+      }
+      for (const k of map[act]) {
+        const kb = document.createElement('kbd');
+        kb.textContent = App._fmtKey(k);
+        kb.title = I18N.t('kbRemove');
+        kb.onclick = () => {
+          const next = normalizeKeyMap(this.settings.keyMap);
+          next[act] = next[act].filter(x => x !== k);
+          this.setSetting('keyMap', next);
+        };
+        keys.appendChild(kb);
+      }
+      const add = document.createElement('button');
+      add.className = 'kb-btn kb-add';
+      add.textContent = '＋';
+      add.title = I18N.t('kbAdd');
+      add.onclick = () => this._beginKeyCapture(act);
+      const reset = document.createElement('button');
+      reset.className = 'kb-btn kb-reset';
+      reset.textContent = '↺';
+      reset.title = I18N.t('kbReset');
+      reset.onclick = () => {
+        const next = normalizeKeyMap(this.settings.keyMap);
+        next[act] = DEFAULT_KEYMAP[act].slice();
+        this.setSetting('keyMap', next);
+      };
+      row.append(label, keys, add, reset);
+      host.appendChild(row);
+    }
+    if (this._keyCapture) {
+      const row = host.querySelector(`.kb-row[data-act="${this._keyCapture.act}"] .kb-add`);
+      if (row) { row.textContent = I18N.t('kbCapture'); row.parentElement.classList.add('capturing'); }
+    }
+  }
+  /** 进入「记录按键」状态：下一次按键写入该动作（Esc 取消） */
+  _beginKeyCapture(act) {
+    this._keyCapture = { act };
+    this._renderKeyBindings();
   }
 
   /* ---------- 书库 ---------- */
@@ -469,6 +591,10 @@ class App {
     this.settings.lang = next;
     try { await this.data.setSetting('lang', next); } catch (e) { /* 设置项保底失败不阻塞切换 */ }
     I18N.applyStatic();
+    this._applyDocTitle();             // 标签页自定义标题（语言切换后保持）
+    this._syncPinUI();                 // 固定按钮提示语
+    this._renderKeyBindings();         // 快捷键动作名随语言更新
+    this._syncStatusHint();            // 状态栏快捷键提示
     this._renderBookList();            // 书库空状态 / 元信息文案
     this._renderDictTabs();            // 词典标签
     this._renderDict();                // 当前查询结果文案
@@ -758,12 +884,52 @@ class App {
   /* ---------- 目录 ---------- */
   _openToc() {
     if (!this.reader.book) return;
+    const book = this.reader.book;
     const ul = $('#toc-list');
     ul.innerHTML = '';
-    const titles = this.reader.book.chapterTitles || this.reader.chapters.map(c => c.title);
-    $('#toc-title').textContent = I18N.t('tocTitle') + ' · ' + this.reader.book.title + ' (' + titles.length + ')';
+    const titles = book.chapterTitles || this.reader.chapters.map(c => c.title);
+    $('#toc-title').textContent = I18N.t('tocTitle') + ' · ' + book.title + ' (' + titles.length + ')';
+
+    // 卷 → 章节下标范围；无卷书籍保持原扁平列表
+    const vols = Array.isArray(book.volumes) ? book.volumes.slice() : [];
+    const volStartOf = new Array(titles.length).fill(-1);   // 每一章所属卷的起始下标（-1 = 卷前 / 无卷）
+    vols.forEach((v, vi) => {
+      const end = vi + 1 < vols.length ? vols[vi + 1].start : titles.length;
+      for (let i = Math.max(0, v.start); i < end && i < titles.length; i++) volStartOf[i] = v.start;
+    });
+    const volByStart = new Map(vols.map(v => [v.start, v]));
+    const curVolStart = this.reader.chapterIndex >= 0 ? volStartOf[this.reader.chapterIndex] : -1;
+    if (curVolStart >= 0) this._tocCollapsed.delete(curVolStart);   // 当前卷总是展开
+    const collapsed = this._tocCollapsed;
+
+    let lastVol = -2;   // -2 与「无卷」的 -1 区分
     titles.forEach((t, i) => {
+      const vs = volStartOf[i];
+      if (vs >= 0 && vs !== lastVol) {
+        const v = volByStart.get(vs);
+        const vi = vols.findIndex(x => x.start === vs);
+        const count = (vi + 1 < vols.length ? vols[vi + 1].start : titles.length) - vs;
+        const hd = document.createElement('li');
+        hd.className = 'toc-vol';
+        hd.dataset.vol = String(vs);
+        if (collapsed.has(vs)) hd.classList.add('collapsed');
+        hd.innerHTML = `<span class="tv-arrow">▾</span><span class="tv-title">${escapeHtml(v ? v.title : '')}</span>`
+          + `<span class="tv-count">${I18N.t('metaChap', { n: count })}</span>`;
+        hd.onclick = () => {
+          const nowCollapsed = !collapsed.has(vs);
+          if (nowCollapsed) collapsed.add(vs); else collapsed.delete(vs);
+          hd.classList.toggle('collapsed', nowCollapsed);
+          let el = hd.nextElementSibling;
+          while (el && !el.classList.contains('toc-vol')) {
+            el.classList.toggle('vol-hide', nowCollapsed);
+            el = el.nextElementSibling;
+          }
+        };
+        ul.appendChild(hd);
+        lastVol = vs;
+      }
       const li = document.createElement('li');
+      li.className = 'toc-ch' + (vs >= 0 ? ' under-vol' : '') + (vs >= 0 && collapsed.has(vs) ? ' vol-hide' : '');
       li.innerHTML = `<span class="ci">${i + 1}</span>${escapeHtml(t)}`;
       if (i === this.reader.chapterIndex) li.classList.add('current');
       li.onclick = () => {
@@ -837,6 +1003,85 @@ class App {
     bindSelect('#set-selaction', 'selAction');
     $('#set-hitzone').onchange = e => this.setSetting('hitZone', e.target.checked);
     $('#set-indent').onchange = e => this.setSetting('indent', e.target.checked);
+
+    // 自定义浏览器标签页标题（输入即生效，防抖写入数据库）
+    $('#set-pagetitle').oninput = debounce((e) => {
+      this.setSetting('pageTitle', e.target.value.trim());
+    }, 350);
+
+    // 顶栏固定按钮：📌 常驻 / 📍 悬停顶部才显示
+    $('#btn-pin').onclick = async () => {
+      const pinned = !(this.settings.toolbarPinned !== false);
+      await this.setSetting('toolbarPinned', pinned);
+      toast(I18N.t(pinned ? 'pinOnToast' : 'pinOffToast'));
+    };
+
+    // 顶栏自动隐藏：鼠标靠近页面顶部 / 聚焦到工具栏内控件时滑出
+    const readerRoot = $('#reader');
+    const showBar = () => {
+      if (!readerRoot.classList.contains('auto-hide')) return;
+      clearTimeout(this.__barHideTimer);
+      readerRoot.classList.add('bar-show');
+    };
+    const hideBarSoon = (ms = 520) => {
+      if (!readerRoot.classList.contains('auto-hide')) return;
+      const bar = readerRoot.querySelector('.rtoolbar');
+      // 下拉框展开时保持顶栏可见，避免选项还在选、栏却收起
+      if (bar && bar.contains(document.activeElement) && document.activeElement.tagName === 'SELECT') return;
+      clearTimeout(this.__barHideTimer);
+      this.__barHideTimer = setTimeout(() => {
+        const b = readerRoot.querySelector('.rtoolbar');
+        if (b && b.contains(document.activeElement)) { try { document.activeElement.blur(); } catch (e) { /* noop */ } }
+        readerRoot.classList.remove('bar-show');
+      }, ms);
+    };
+    document.addEventListener('mousemove', (e) => {
+      if (!readerRoot.classList.contains('auto-hide')) return;
+      const main = $('#main').getBoundingClientRect();
+      const bar = readerRoot.querySelector('.rtoolbar');
+      const br = bar ? bar.getBoundingClientRect() : null;
+      const nearTop = e.clientY - main.top <= 26;
+      const overBar = readerRoot.classList.contains('bar-show') && br
+        && e.clientY >= br.top && e.clientY <= br.bottom && e.clientX >= br.left && e.clientX <= br.right;
+      if (nearTop || overBar) showBar(); else hideBarSoon();
+    });
+    readerRoot.addEventListener('focusin', (e) => {
+      if (e.target.closest && e.target.closest('.rtoolbar')) showBar();
+    });
+    // 点击工具栏以外的阅读区：立即收起（桌面 mousemove 之外的兜底，触屏也适用）
+    document.addEventListener('pointerdown', (e) => {
+      if (!readerRoot.classList.contains('bar-show')) return;
+      const bar = readerRoot.querySelector('.rtoolbar');
+      if (bar && !bar.contains(e.target)) {
+        if (bar.contains(document.activeElement)) { try { document.activeElement.blur(); } catch (err) { /* noop */ } }
+        readerRoot.classList.remove('bar-show');
+      }
+    }, { passive: true });
+    // 顶部感应带：鼠标移入即滑出；触屏点顶部延时滑出（避免同一击误触工具栏按钮）
+    const hot = $('#bar-hotzone');
+    hot.addEventListener('pointerenter', showBar);
+    hot.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (e.pointerType === 'touch') setTimeout(showBar, 260);
+      else showBar();
+    });
+
+    // 快捷键录制：捕获阶段截获下一次按键（不触发翻页）；Esc 取消
+    window.addEventListener('keydown', (e) => {
+      if (!this._keyCapture) return;
+      // 设置弹窗已关闭：录制状态作废，避免之后误吞阅读按键
+      if ($('#dlg-settings').style.display === 'none') { this._keyCapture = null; return; }
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === 'Escape') { this._keyCapture = null; this._renderKeyBindings(); return; }
+      if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) return;
+      const act = this._keyCapture.act;
+      const next = normalizeKeyMap(this.settings.keyMap);
+      // 同一个键只归属一个动作，避免冲突
+      for (const a of KEY_ACTIONS) next[a] = next[a].filter(k => k !== e.key);
+      next[act].push(e.key);
+      this._keyCapture = null;
+      this.setSetting('keyMap', next);
+    }, true);
 
     // 工具栏语速 / 发音人
     $('#tts-rate').onchange = e => this.setSetting('ttsRate', parseFloat(e.target.value));

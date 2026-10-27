@@ -14,6 +14,8 @@
 
   <!-- ===== 阅读区 ===== -->
   <main id="main">
+    <!-- 顶栏自动隐藏时，鼠标移到页面顶部即唤出工具栏 -->
+    <div id="bar-hotzone" aria-hidden="true"></div>
     <div id="reader-empty">
       <div class="big">📖</div>
       <div class="hint">
@@ -106,6 +108,7 @@
         <button class="btn icon" id="btn-page-next" data-i18n-title="pageNextTitle">›</button>
         <span class="rt-percent" id="rt-percent" data-i18n-title="percentTitle">0%</span>
         <button class="btn ghost icon rt-ph" id="btn-phonetic" data-i18n-title="phTitle">Aa</button>
+        <button class="btn ghost icon on" id="btn-pin" aria-pressed="true">📌</button>
         <button class="btn ghost icon" id="btn-more" data-i18n-title="moreTitle">⋯</button>
         <button class="btn ghost icon" id="btn-settings" data-i18n-title="settingsTitle">⚙</button>
       </div>
@@ -121,7 +124,7 @@
     <span id="st-chapter"></span>
     <span id="st-tts"></span>
     <span style="flex:1"></span>
-    <span id="st-hint" data-i18n="stHint">划选正文 → 翻译 / 朗读 · 键盘 ← → 翻页</span>
+    <span id="st-hint">划选正文 → 翻译 / 朗读 · 键盘 ← / → 翻页</span>
   </footer>
 </div>
 
@@ -197,6 +200,10 @@
           <select id="set-fontfamily"><option value="serif" data-i18n="font_serif">宋体系 (衬线)</option><option value="kai" data-i18n="font_kai">楷体系</option><option value="sans" data-i18n="font_sans">黑体系 (无衬线)</option></select></div>
         <div class="form-row"><label data-i18n="setPageWidth">页宽</label><select id="set-pagewidth"></select></div>
       </div>
+      <div class="form-row"><label data-i18n="setPageTitle">标签页标题</label>
+        <input id="set-pagetitle" type="text" data-i18n-ph="setPageTitlePh" placeholder="留空使用默认标题" autocomplete="off" maxlength="60"></div>
+      <div class="form-row" style="margin-bottom:6px"><label data-i18n="setShortcuts">快捷键（点击按键删除，＋ 添加）</label></div>
+      <div id="key-bindings" class="key-bindings"></div>
       <div class="form-check"><input type="checkbox" id="set-hitzone"><label data-i18n="setHitZone">点击页面左右两侧边翻页</label></div>
       <div class="form-check"><input type="checkbox" id="set-indent"><label data-i18n="setIndent">段落首行缩进两字符</label></div>
       <div class="form-row"><label data-i18n="setSelAction">划词操作</label>
@@ -410,7 +417,7 @@ const I18N_LANGS = {
     percentTitle: '全书进度',
     phTitle: '隐藏/显示音标与词性',
     noBook: '未打开书籍',
-    stHint: '划选正文 → 翻译 / 朗读 · 键盘 ← → 翻页',
+    stHint: '划选正文 → 翻译 / 朗读 · 键盘 {prev} / {next} 翻页',
     stReading: '🔊 朗读中…',
     lastPage: '已是最后一页',
     firstPage: '已是第一页',
@@ -478,6 +485,15 @@ const I18N_LANGS = {
     setTitle: '⚙ 阅读设置',
     setTheme: '主题', setFontSize: '字号', setLineHeight: '行距', setFont: '字体',
     setPageWidth: '页宽',
+    setPageTitle: '标签页标题',
+    setPageTitlePh: '留空使用默认标题',
+    setShortcuts: '快捷键（点击按键删除，＋ 添加）',
+    kbPrev: '上一页', kbNext: '下一页', kbStart: '章首', kbEnd: '章末',
+    kbAdd: '添加按键', kbReset: '恢复默认', kbCapture: '请按键…', kbEmpty: '未设置', kbRemove: '点击删除该按键',
+    pinOn: '顶栏已固定（点击改为悬停显示）',
+    pinOff: '顶栏自动隐藏（点击固定）',
+    pinOnToast: '顶栏已固定',
+    pinOffToast: '顶栏已取消固定：鼠标移到页面顶部才显示',
     setHitZone: '点击页面左右两侧边翻页',
     setIndent: '段落首行缩进两字符',
     setSelAction: '划词操作',
@@ -503,6 +519,8 @@ const I18N_LANGS = {
       '<div class="key-row"><span>移动端：左右滑动</span><span>翻页</span></div>' +
       '<div class="key-row"><span>「☰」按钮</span><span>打开 / 收起书库</span></div>' +
       '<div class="key-row"><span>长按 / 划选文字</span><span>翻译、朗读</span></div>' +
+      '<div class="key-row"><span><kbd>📌</kbd></span><span>固定 / 自动隐藏顶栏</span></div>' +
+      '<p class="muted-text">快捷键与标签页标题可在「阅读设置」中自定义。</p>' +
       '<h4>性能说明</h4>' +
       '<p>章节切分在后台 Web Worker 线程异步执行（多线程），主界面不卡顿；分页排版采用测量分页，翻页流畅。</p>',
     // 确认框 / 进度
@@ -624,7 +642,7 @@ const I18N_LANGS = {
     percentTitle: 'Whole-book progress',
     phTitle: 'Show/hide phonetic & POS',
     noBook: 'No book open',
-    stHint: 'Select text → translate / speak · ← → keys turn pages',
+    stHint: 'Select text → translate / speak · {prev} / {next} keys turn pages',
     stReading: '🔊 Reading…',
     lastPage: 'This is the last page',
     firstPage: 'This is the first page',
@@ -688,6 +706,15 @@ const I18N_LANGS = {
     setTitle: '⚙ Reader settings',
     setTheme: 'Theme', setFontSize: 'Font size', setLineHeight: 'Line height', setFont: 'Font',
     setPageWidth: 'Page width',
+    setPageTitle: 'Browser tab title',
+    setPageTitlePh: 'Leave empty for the default title',
+    setShortcuts: 'Shortcuts (click a key to remove, + to add)',
+    kbPrev: 'Previous page', kbNext: 'Next page', kbStart: 'Chapter start', kbEnd: 'Chapter end',
+    kbAdd: 'Add key', kbReset: 'Reset', kbCapture: 'Press a key…', kbEmpty: 'unset', kbRemove: 'Click to remove this key',
+    pinOn: 'Toolbar pinned (click to auto-hide)',
+    pinOff: 'Toolbar auto-hides (click to pin)',
+    pinOnToast: 'Toolbar pinned',
+    pinOffToast: 'Toolbar unpinned: hover near the top of the page to show it',
     setHitZone: 'Tap left/right edges of the page to turn pages',
     setIndent: 'Indent the first line of each paragraph',
     setSelAction: 'Selection action',
@@ -712,6 +739,8 @@ const I18N_LANGS = {
       '<div class="key-row"><span>Mobile: swipe left / right</span><span>Turn pages</span></div>' +
       '<div class="key-row"><span>«☰» button</span><span>Open / close the library</span></div>' +
       '<div class="key-row"><span>Select text</span><span>Translate, speak</span></div>' +
+      '<div class="key-row"><span><kbd>📌</kbd></span><span>Pin / auto-hide the toolbar</span></div>' +
+      '<p class="muted-text">Shortcuts and the browser tab title can be customized in Reader settings.</p>' +
       '<h4>Performance</h4>' +
       '<p>Chapter splitting runs asynchronously on a background Web Worker thread (multithreading), so the UI stays smooth; pagination is measured for fluid page turns.</p>',
     cfTitle: 'Confirm',

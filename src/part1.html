@@ -209,6 +209,49 @@ input,select,textarea{font-family:inherit; font-size:14px; color:inherit}
 .rt-ph.off{opacity:.38; text-decoration:line-through}
 select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--line); background:var(--bg); outline:none; font-size:12.5px}
 
+/* ---------- 顶栏固定 / 自动隐藏 ----------
+   📌 常驻：工具栏在文档流中，撑开顶部（默认，原行为）
+   📍 浮动：工具栏绝对定位、悬停页面顶部时才滑出，正文占满整个高度 */
+#reader{position:relative}
+.rtoolbar{transition:transform .2s ease, opacity .2s ease}
+#reader.auto-hide .rtoolbar{
+  position:absolute; top:0; left:0; right:0; z-index:30;
+  transform:translateY(-102%); opacity:0; pointer-events:none;
+  box-shadow:0 6px 18px rgba(0,0,0,.12);
+}
+#reader.auto-hide.bar-show .rtoolbar{transform:none; opacity:1; pointer-events:auto}
+/* 顶部悬停感应带：仅自动隐藏时启用 */
+#bar-hotzone{
+  display:none; position:absolute; top:0; left:0; right:0; height:14px; z-index:29;
+}
+#reader.auto-hide #bar-hotzone{display:block}
+#reader.auto-hide.bar-show #bar-hotzone{display:none}
+/* 固定按钮：常驻时高亮，浮动时淡出 */
+#btn-pin.on{background:var(--accent-soft); color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent)}
+
+/* ---------- 设置 · 快捷键 ---------- */
+.key-bindings{
+  border:1px solid var(--line); border-radius:10px; padding:2px 12px; margin-bottom:14px;
+  background:var(--bg);
+}
+.kb-row{display:flex; align-items:center; gap:6px; padding:8px 0; border-bottom:1px dashed var(--line); flex-wrap:wrap}
+.kb-row:last-child{border-bottom:none}
+.kb-label{min-width:60px; font-size:13px; color:var(--muted); flex:none}
+.kb-keys{display:flex; gap:5px; flex:1; min-width:0; flex-wrap:wrap}
+.kb-keys kbd{
+  background:var(--btn-bg); color:var(--btn-fg); border:1px solid var(--line);
+  border-radius:6px; padding:2px 8px; font-size:12px; font-family:inherit; cursor:pointer;
+  user-select:none; -webkit-user-select:none;
+}
+.kb-keys kbd:hover{border-color:var(--danger); color:var(--danger)}
+.kb-keys .kb-empty{font-size:12px; color:var(--muted)}
+.kb-btn{
+  flex:none; width:26px; height:26px; border-radius:7px; font-size:13px; line-height:1;
+  background:var(--btn-bg); color:var(--btn-fg); border:1px solid transparent;
+}
+.kb-btn:hover{filter:brightness(1.06)}
+.kb-row.capturing .kb-add{background:var(--accent); color:#fff; width:auto; padding:0 8px; font-size:12px}
+
 #page-frame{
   flex:1; min-height:0; position:relative; overflow:hidden;
   background:var(--reader-bg);
@@ -225,7 +268,15 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
   -webkit-user-select:text;
   -webkit-touch-callout:none; /* 移动端不弹系统选中菜单，改用自绘划词工具栏 */
 }
+/* 键盘翻页 / 点击正文后浏览器可能给可聚焦的正文区画焦点框，阅读时不需要 */
+#page-content:focus, #page-content:focus-visible{outline:none}
 #page-content .para{margin:0 0 .35em; text-indent:2em}
+/* 章首页标题：章节号 + 章节名（页宽/字号/行高与分页计算保持一致） */
+#page-content .page-title{
+  font-size:1.12em; font-weight:700; line-height:1.55;
+  margin:0 0 .7em; text-indent:0; text-align:left; letter-spacing:.02em;
+  color:var(--reader-fg);
+}
 /* 折衷保障：个别页面内容若仍超出可视区（浏览器真实断行与估算偏差），
    允许在页内向下滚动看全最后一行；正常页不启用，外观与行为无变化。
    加大底部留白：让滚动行程更长、最后一行上方有充足空隙，即使溢出较多也能完整看到
@@ -369,6 +420,23 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
 #toc-list li:hover{background:var(--accent-soft)}
 #toc-list li.current{color:var(--accent); font-weight:700}
 #toc-list li .ci{color:var(--muted); font-size:11.5px; margin-right:8px}
+/* 分卷目录：卷标题可折叠，卷内章节缩进显示 */
+#toc-list li.toc-vol{
+  position:sticky; top:0; z-index:1;
+  display:flex; align-items:center; gap:8px;
+  margin:8px 0 4px; padding:8px 10px;
+  background:var(--accent-soft); color:var(--accent);
+  font-weight:700; font-size:13px;
+}
+#toc-list li.toc-vol:first-child{margin-top:0}
+#toc-list li.toc-vol:hover{background:color-mix(in srgb, var(--accent) 16%, transparent)}
+#toc-list li.toc-vol .tv-arrow{flex:none; font-size:10px; transition:transform .15s ease}
+#toc-list li.toc-vol.collapsed .tv-arrow{transform:rotate(-90deg)}
+#toc-list li.toc-vol .tv-title{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#toc-list li.toc-vol .tv-count{flex:none; font-weight:400; font-size:11.5px; color:var(--muted)}
+#toc-list li.toc-ch{font-size:13.5px}
+#toc-list li.toc-ch.under-vol{padding-left:26px}
+#toc-list li.toc-ch.vol-hide{display:none}
 
 /* 导入进度覆盖层 */
 #progress-overlay{position:fixed; inset:0; background:var(--overlay); z-index:95;
@@ -398,7 +466,8 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
 @media (max-width:960px){
   #dict-panel{
     top:auto; bottom:30px; height:58vh; width:100%; border-top:1px solid var(--line); border-left:none;
-    transform:translateY(103%);
+    /* 隐藏位移要同时越过底部状态栏（30px），否则面板会露出并盖住状态栏 */
+    transform:translateY(calc(100% + 32px));
   }
   #dict-panel.open{transform:none}
   #page-content{padding-top:20px; padding-bottom:24px}

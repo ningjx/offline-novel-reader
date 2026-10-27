@@ -20,9 +20,14 @@ function decodeTextBytes(buf) {
 /* ---------- 4. 章节切分（纯函数，同时用于 Web Worker 与主线程降级） ---------- */
 /**
  * 把整本小说文本切分为章节数组。
- * 规则: 优先按「第X章/卷/节」等标题行识别；标题行识别不足 2 个时，
- *       退化为按固定字数切块，保证任何文本都能阅读。
- * 返回: { chapters: [{index, title, paras: string[], chars}], totalChars }
+ * 规则: 优先按「第X章/节/回」等标题行识别，「第X卷」作为卷边界（不当作章节）；
+ *       第一个标题之前的内容（书名 / 作者 / 简介）作为「作品信息」章，可以正常阅读；
+ *       标题行识别不足 2 个时，退化为按固定字数切块，保证任何文本都能阅读。
+ * 返回: {
+ *   chapters: [{index, title, paras, chars, volume, volumeIndex}],
+ *   totalChars,
+ *   volumes: [{title, start}]   // 卷标题 + 卷内第一章下标（目录折叠分组用）
+ * }
  */
 function splitChapters(text, opts = {}) {
   const targetChars = opts.targetChars || 4500;
@@ -31,37 +36,50 @@ function splitChapters(text, opts = {}) {
   const lines = t.split('\n');
 
   // --- 标题行识别 ---
+  const volumeRe = /^\s*(?:第\s*[0-9０-９零一二三四五六七八九十百千万两〇]+\s*卷|卷\s*[0-9０-９零一二三四五六七八九十百千万两〇]+)[^\n]{0,60}\s*$/;
   const titleRe = [
-    /^\s*第\s*[0-9０-９零一二三四五六七八九十百千万两〇]+\s*[章节卷回部集篇][^\n]{0,60}\s*$/,  // 第十二章 风云
+    /^\s*第\s*[0-9０-９零一二三四五六七八九十百千万两〇]+\s*[章节回部集篇][^\n]{0,60}\s*$/,  // 第十二章 风云
     /^\s*(?:序\s*章|楔\s*子|前\s*言|引\s*子|题\s*记|尾\s*声|后\s*记|番\s*外|终\s*章|结\s*语)\s*$/, // 章节性段落
     /^\s*(?:chapter|volume|part|book)\s+[0-9]{1,5}\s*[.:：]?\s*[^\n]{0,60}$/i,                  // Chapter 12: ...
   ];
   const isTitle = (s) => titleRe.some(re => re.test(s));
+  const isVolume = (s) => volumeRe.test(s);
 
-  // 第一章的标题可能带后续内容（如「第一章 风起 洛城客栈中……」），只在确实无匹配时兜底
-  const idx = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (isTitle(lines[i]) && lines[i].length <= 80) idx.push(i);
+  // 卷 / 章标题共同构成切分边界；识别不足 2 个时退回按字数切块
+  let headingCount = 0;
+  for (const l of lines) {
+    if (l.length <= 80 && (isTitle(l) || isVolume(l))) headingCount++;
   }
 
-  let chapters;
-  if (idx.length >= 2) {
-    // 主/卷目录中「第X章」跟正文分离的常见处理：标题行并入下一个正文段之前，跳过重复的空标题
-    const starts = [...idx, lines.length];
-    chapters = [];
-    let title = null;
-    let paras = [];
-    for (let i = 0; i < lines.length; i++) {
-      if (isTitle(lines[i]) && lines[i].length <= 80) {
-        if (title !== null) chapters.push({ title, paras });
-        title = lines[i].replace(/^\s+|\s+$/g, '');
-        paras = [];
+  let chapters = null;
+  if (headingCount >= 2) {
+    // 逐行归类：卷标题开新卷；章标题开新章；其余行归入当前章。
+    // 第一个标题之前的内容（书名 / 作者 / 简介）作为「作品信息」章，避免开头信息无法阅读。
+    const sections = [];
+    let cur = { kind: 'preface', title: null, lines: [], volume: null, volumeIndex: -1 };
+    let volTitle = null, volIndex = -1, volSeq = 0;
+    for (const line of lines) {
+      const s = line.trim();
+      if (s.length <= 80 && isVolume(s)) {
+        if (cur.lines.length) sections.push(cur);
+        volTitle = s;
+        volIndex = volSeq++;
+        cur = { kind: 'volume', title: s, lines: [], volume: volTitle, volumeIndex: volIndex };
+      } else if (s.length <= 80 && isTitle(s)) {
+        if (cur.lines.length) sections.push(cur);
+        cur = { kind: 'chapter', title: s, lines: [], volume: volTitle, volumeIndex: volIndex };
       } else {
-        const s = lines[i].replace(/\s+/g, '').trim();
-        if (s) paras.push(s);
+        const p = s.replace(/\s+/g, '').trim();
+        if (p) cur.lines.push(p);
       }
     }
-    if (title !== null) chapters.push({ title, paras });
+    if (cur.lines.length) sections.push(cur);
+    chapters = sections.filter(sec => sec.lines.length).map(sec => ({
+      title: sec.kind === 'preface' ? '作品信息' : sec.title,
+      paras: sec.lines,
+      volume: sec.kind === 'preface' ? null : (sec.volume || null),
+      volumeIndex: sec.kind === 'preface' ? -1 : (typeof sec.volumeIndex === 'number' ? sec.volumeIndex : -1),
+    }));
     if (chapters.length === 0) chapters = null; // 全空：退回按块切分
   }
 
@@ -116,13 +134,31 @@ function splitChapters(text, opts = {}) {
     .filter(c => c.paras.length > 0)
     .map((c, i) => {
       const chars = c.paras.reduce((n, p) => n + p.length, 0);
-      return { index: i, title: c.title || `第 ${i + 1} 节`, paras: c.paras, chars };
+      return {
+        index: i,
+        title: c.title || `第 ${i + 1} 节`,
+        paras: c.paras,
+        chars,
+        volume: c.volume || null,
+        volumeIndex: typeof c.volumeIndex === 'number' ? c.volumeIndex : -1,
+      };
     });
   if (!chapters.length) {
-    chapters = [{ index: 0, title: '正文', paras: ['（没有可显示的正文内容）'], chars: 0 }];
+    chapters = [{ index: 0, title: '正文', paras: ['（没有可显示的正文内容）'], chars: 0, volume: null, volumeIndex: -1 }];
   }
+
+  // 卷边界：同一卷的章节连续排列，记录每卷标题与卷内首个章节下标（目录分组 / 折叠）
+  const volumes = [];
+  let lastVol = -1;
+  chapters.forEach((c, i) => {
+    if (c.volumeIndex >= 0 && c.volumeIndex !== lastVol) {
+      volumes.push({ title: c.volume || `第 ${c.volumeIndex + 1} 卷`, start: i });
+      lastVol = c.volumeIndex;
+    }
+  });
+
   const totalChars = chapters.reduce((n, c) => n + c.chars, 0);
-  return { chapters, totalChars };
+  return { chapters, totalChars, volumes };
 }
 
 /* ---------- 5. 后台 Worker（多线程） ---------- */
@@ -134,7 +170,7 @@ self.onmessage = (e) => {
   const { id, text } = e.data || {};
   try {
     const r = splitChapters(text);
-    self.postMessage({ id, ok: true, chapters: r.chapters, totalChars: r.totalChars });
+    self.postMessage({ id, ok: true, chapters: r.chapters, totalChars: r.totalChars, volumes: r.volumes });
   } catch (err) {
     self.postMessage({ id, ok: false, error: String(err && err.stack || err) });
   }
@@ -181,7 +217,7 @@ class TextWorker {
       return new Promise(resolve => {
         setTimeout(() => {
           const r = splitChapters(text);
-          resolve({ chapters: r.chapters, totalChars: r.totalChars });
+          resolve({ chapters: r.chapters, totalChars: r.totalChars, volumes: r.volumes });
         }, 0);
       });
     }
@@ -278,12 +314,13 @@ class DataManager {
     progress.setSub(I18N.t('progWorker'));
     progress.set(0.05);
     // 切分（Web Worker 线程 / 主线程降级）
-    const { chapters, totalChars } = await this._worker.split(text);
+    const { chapters, totalChars, volumes } = await this._worker.split(text);
     progress.setSub(I18N.t('progOrganize'));
     book.chapterCount = chapters.length;
     book.totalChars = totalChars;
     book.chapterChars = chapters.map(c => c.chars);
     book.chapterTitles = chapters.map(c => c.title);
+    book.volumes = Array.isArray(volumes) ? volumes : [];
     // 写入数据库（异步分批）
     progress.show(I18N.t('progWrite'));
     const list = chapters.map((c, i) => ({
