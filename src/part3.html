@@ -18,6 +18,20 @@ function decodeTextBytes(buf) {
 }
 
 /* ---------- 4. 章节切分（纯函数，同时用于 Web Worker 与主线程降级） ---------- */
+/* 图片段落标记：段落字符串以该控制符 + 图片 URL 开头。splitChapters 内部另有一份同值
+ * 局部常量（Worker 只序列化函数体，不能再引用模块作用域变量），两处必须保持一致。 */
+const IMG_MARK = '\u0001IMG\u0001';
+/** 段落是否为图片；是则返回 URL，否则返回 null */
+function imgUrlOf(text) {
+  if (!text) return null;
+  if (text.slice(0, IMG_MARK.length) === IMG_MARK) {
+    const u = text.slice(IMG_MARK.length).trim();
+    return /^(?:https?:|data:image\/)/i.test(u) ? u : null;
+  }
+  // 兼容升级前已导入的书：整段就是一个 <img> 标签（去空白后形如 <imgsrc="...">）
+  const m = text.match(/^<img\s*(?:[^>]*?)src\s*=\s*["']?([^"'\s>]+)["']?[^>]*>$/i);
+  return m && /^(?:https?:|data:image\/)/i.test(m[1]) ? m[1] : null;
+}
 /**
  * 把整本小说文本切分为章节数组。
  * 规则: 优先按「第X章/节/回」等标题行识别，「第X卷」作为卷边界（不当作章节）；
@@ -36,6 +50,29 @@ function splitChapters(text, opts = {}) {
   const lines = t.split('\n');
 
   // --- 标题行识别 ---
+  // 图片段落：整段以控制符标记保存，渲染时替换为 <img>。原文里的 <img src="...">
+  // 会先被下面的「去空白」压成 <imgsrc="...">，所以正则允许 img 与 src 之间没有空格。
+  const IMG_MARK = '\u0001IMG\u0001';
+  const IMG_RE = /<img\s*(?:[^>]*?)src\s*=\s*["']?([^"'\s>]+)["']?[^>]*>/gi;
+  const okImgUrl = u => /^(?:https?:|data:image\/)/i.test(u);
+  // 顺带清理抓取文本里常见的排版标签（<p> / <br> / <span> 等），避免原样显示成文字
+  const cleanText = t => t.replace(/<\/?(?:p|div|span|strong|em|b|i|br|font|center)\b[^>]*>/gi, '').replace(/\s+/g, '').trim();
+  /** 把一行拆成「文字段 / 图片段」；文字段的空白按原逻辑全部去掉 */
+  const splitImageLine = (raw) => {
+    const out = [];
+    let last = 0, m;
+    IMG_RE.lastIndex = 0;
+    while ((m = IMG_RE.exec(raw))) {
+      const txt = cleanText(raw.slice(last, m.index));
+      if (txt) out.push(txt);
+      if (okImgUrl(m[1])) out.push(IMG_MARK + m[1]);
+      last = m.index + m[0].length;
+    }
+    const rest = cleanText(raw.slice(last));
+    if (rest) out.push(rest);
+    return out;
+  };
+
   const volumeRe = /^\s*(?:第\s*[0-9０-９零一二三四五六七八九十百千万两〇]+\s*卷|卷\s*[0-9０-９零一二三四五六七八九十百千万两〇]+)[^\n]{0,60}\s*$/;
   const titleRe = [
     /^\s*第\s*[0-9０-９零一二三四五六七八九十百千万两〇]+\s*[章节回部集篇][^\n]{0,60}\s*$/,  // 第十二章 风云
@@ -69,8 +106,7 @@ function splitChapters(text, opts = {}) {
         if (cur.lines.length) sections.push(cur);
         cur = { kind: 'chapter', title: s, lines: [], volume: volTitle, volumeIndex: volIndex };
       } else {
-        const p = s.replace(/\s+/g, '').trim();
-        if (p) cur.lines.push(p);
+        for (const p of splitImageLine(s)) cur.lines.push(p);
       }
     }
     if (cur.lines.length) sections.push(cur);
@@ -94,8 +130,11 @@ function splitChapters(text, opts = {}) {
         if (cur.length) { blocks.push(cur); cur = []; curLen = 0; }
         continue;
       }
-      cur.push(s);
-      curLen += s.length;
+      const parts = splitImageLine(s);
+      for (const part of parts) {
+        cur.push(part);
+        curLen += part.startsWith(IMG_MARK) ? 0 : part.length;
+      }
       if (curLen >= targetChars) { blocks.push(cur); cur = []; curLen = 0; }
     }
     if (cur.length) blocks.push(cur);
@@ -111,6 +150,11 @@ function splitChapters(text, opts = {}) {
       if (chunk.length) { chapters.push(chunk); chunk = []; len = 0; }
     };
     const addPara = (p) => {
+      if (p.startsWith(IMG_MARK)) {   // 图片不参与字数切段
+        chunk.push(p);
+        if (len >= targetChars) flushChunk();
+        return;
+      }
       let rest = p;
       while (rest.length > targetChars) {
         const piece = rest.slice(0, targetChars);
@@ -133,7 +177,8 @@ function splitChapters(text, opts = {}) {
   chapters = chapters
     .filter(c => c.paras.length > 0)
     .map((c, i) => {
-      const chars = c.paras.reduce((n, p) => n + p.length, 0);
+      // 图片段不计入字数（否则 URL 长度会污染进度百分比）
+      const chars = c.paras.reduce((n, p) => n + (p.startsWith(IMG_MARK) ? 0 : p.length), 0);
       return {
         index: i,
         title: c.title || `第 ${i + 1} 节`,

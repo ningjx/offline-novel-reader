@@ -277,6 +277,21 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
   margin:0 0 .7em; text-indent:0; text-align:left; letter-spacing:.02em;
   color:var(--reader-fg);
 }
+/* 正文插图：高度由分页预留（源码里 .imgH 上限 240px），这里只做居中与等比缩放，
+   保证图片不会喧宾夺主，且加载前后不改变排版 */
+#page-content .page-img{
+  display:flex; align-items:center; justify-content:center;
+  margin:0 0 .35em; overflow:hidden;
+}
+#page-content .page-img img{
+  max-width:92%; max-height:100%; object-fit:contain;
+  border-radius:6px; display:block; cursor:zoom-in;
+  box-shadow:0 1px 5px rgba(0,0,0,.14);
+}
+#page-content .page-img.bad{
+  font-size:12px; color:var(--muted);
+  border:1px dashed var(--line); border-radius:8px; background:var(--bg);
+}
 /* 折衷保障：个别页面内容若仍超出可视区（浏览器真实断行与估算偏差），
    允许在页内向下滚动看全最后一行；正常页不启用，外观与行为无变化。
    加大底部留白：让滚动行程更长、最后一行上方有充足空隙，即使溢出较多也能完整看到
@@ -401,6 +416,13 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
 .form-row textarea{min-height:150px; resize:vertical; line-height:1.7}
 .form-row input:focus, .form-row select:focus, .form-row textarea:focus{border-color:var(--accent)}
 .form-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 18px}
+/* 字体选择：自定义输入框 + 用当前字体渲染的示例文字 */
+.font-sample{
+  margin-top:8px; padding:8px 10px; border-radius:8px;
+  border:1px dashed var(--line); background:var(--bg);
+  font-size:16px; line-height:1.7; color:var(--fg);
+  overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+}
 .form-check{display:flex; align-items:center; gap:8px; font-size:13.5px; margin:8px 0}
 .form-check input{width:16px; height:16px; accent-color:var(--accent)}
 .help-block{line-height:2; font-size:13.5px}

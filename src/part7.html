@@ -193,6 +193,8 @@ class App {
     // ---- 事件与 UI ----
     this._wireBus();
     this._buildDictPanel();
+    this._migrateLegacyFont();
+    this._buildFontPicker();
     this._bindUI();
     this._syncPhoneticUI();
     this._renderKeyBindings();
@@ -274,7 +276,7 @@ class App {
     $('#set-theme').value = this.settings.theme;
     $('#set-fontsize').value = String(this.settings.fontSize);
     $('#set-lineheight').value = String(this.settings.lineHeight);
-    $('#set-fontfamily').value = this.settings.fontFamily;
+    this._syncFontPicker();
     $('#set-pagewidth').value = String(this.settings.pageWidth);
     const pt = $('#set-pagetitle');
     if (pt && document.activeElement !== pt) pt.value = this.settings.pageTitle || '';
@@ -282,6 +284,67 @@ class App {
     $('#set-indent').checked = !!this.settings.indent;
     $('#set-selaction').value = this.settings.selAction;
   }
+
+  /* ---------- 阅读字体选择器 ---------- */
+  /** 当前字体是否属于内置候选（空 = 自动；旧预设键 serif/kai/sans 也算内置） */
+  _isBuiltinFont(name) {
+    if (!name || FONT_PRESETS[name]) return true;
+    return FONT_GROUPS.some(g => g.families.includes(name));
+  }
+  /** 旧版本只有 serif / kai / sans 三个预设键：迁移成同组里本机已装的具体字体名 */
+  _migrateLegacyFont() {
+    const cur = this.settings.fontFamily;
+    const groupKey = FONT_LEGACY_GROUP[cur];
+    if (!groupKey) return cur;
+    const grp = FONT_GROUPS.find(g => g.key === groupKey);
+    const installed = grp ? grp.families.filter(f => FontDetector.has(f)) : [];
+    const next = installed[0] || '';
+    this.settings.fontFamily = next;
+    this.data.setSetting('fontFamily', next).catch(() => {});
+    return next;
+  }
+  /** 构建下拉：首项「自动」，然后只列出本机确实安装了的候选字体，末尾附「自定义字体…」 */
+  _buildFontPicker() {
+    const sel = $('#set-fontfamily');
+    if (!sel) return;
+    const cur = this.settings.fontFamily;
+    sel.innerHTML = '';
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = I18N.t('fontAuto');
+    sel.appendChild(auto);
+    for (const g of FONT_GROUPS) {
+      const installed = g.families.filter(f => FontDetector.has(f));
+      if (!installed.length) continue;
+      const grp = document.createElement('optgroup');
+      grp.label = I18N.t(g.key);
+      for (const f of installed) {
+        const o = document.createElement('option');
+        o.value = f; o.textContent = f;
+        grp.appendChild(o);
+      }
+      sel.appendChild(grp);
+    }
+    const custom = document.createElement('option');
+    custom.value = App.CUSTOM_FONT;
+    custom.textContent = I18N.t('fontCustom');
+    sel.appendChild(custom);
+    sel.value = this._isBuiltinFont(cur) ? (cur || '') : App.CUSTOM_FONT;
+  }
+  /** 同步自定义字体输入框的显示与值、以及示例文字 */
+  _syncFontPicker() {
+    const sel = $('#set-fontfamily');
+    const box = $('#set-customfont');
+    if (!sel || !box) return;
+    const cur = this.settings.fontFamily;
+    const builtin = this._isBuiltinFont(cur);
+    sel.value = builtin ? (cur || '') : App.CUSTOM_FONT;
+    box.style.display = builtin ? 'none' : '';
+    if (document.activeElement !== box) box.value = builtin ? '' : cur;
+    const sample = $('#font-sample');
+    if (sample) sample.style.fontFamily = fontStackOf(cur, 'serif');
+  }
+  static get CUSTOM_FONT() { return '__custom__'; }
 
   /* ---------- 浏览器标签页标题 ---------- */
   _applyDocTitle() {
@@ -595,6 +658,7 @@ class App {
     this._syncPinUI();                 // 固定按钮提示语
     this._renderKeyBindings();         // 快捷键动作名随语言更新
     this._syncStatusHint();            // 状态栏快捷键提示
+    this._buildFontPicker();           // 字体分组名 / 自定义项文案
     this._renderBookList();            // 书库空状态 / 元信息文案
     this._renderDictTabs();            // 词典标签
     this._renderDict();                // 当前查询结果文案
@@ -998,7 +1062,24 @@ class App {
     bindSelect('#set-theme', 'theme');
     bindSelect('#set-fontsize', 'fontSize');
     bindSelect('#set-lineheight', 'lineHeight');
-    bindSelect('#set-fontfamily', 'fontFamily');
+    // 字体：内置候选（仅列出本机已安装的）+ 自定义输入
+    $('#set-fontfamily').onchange = (e) => {
+      const v = e.target.value;
+      if (v === App.CUSTOM_FONT) {
+        const box = $('#set-customfont');
+        box.style.display = '';
+        box.focus();
+        if (box.value.trim()) this.setSetting('fontFamily', box.value.trim());
+        return;
+      }
+      this.setSetting('fontFamily', v);   // 空字符串 = 自动
+    };
+    $('#set-customfont').oninput = debounce((e) => {
+      const name = e.target.value.trim();
+      const sample = $('#font-sample');
+      if (sample) sample.style.fontFamily = fontStackOf(name, 'serif');
+      this.setSetting('fontFamily', name);
+    }, 350);
     bindSelect('#set-pagewidth', 'pageWidth');
     bindSelect('#set-selaction', 'selAction');
     $('#set-hitzone').onchange = e => this.setSetting('hitZone', e.target.checked);

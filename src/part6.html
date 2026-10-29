@@ -151,6 +151,8 @@ class ChapterPager {
     // 额外 1 个段间距兜底页首/页尾段落的边距波动，确保最后一行永远放得下
     this.budgetH = Math.max(40, this.availH - this.lineH * 2 - this.paraGap);
     this.maxLines = Math.max(1, Math.floor(this.availH / this.lineH));
+    // 插图占位高度：保持低调，不抢正文版面（约页宽一半、页高 34%，最多 220px）
+    this.imgH = Math.max(80, Math.round(Math.min(this.pageW * 0.5, this.availH * 0.34, 220)));
   }
 
   async paginate(paras, title) {
@@ -192,6 +194,18 @@ class ChapterPager {
     for (let p = 0; p < paras.length; p++) {
       const text = paras[p];
       if (!text) continue;
+      // 图片段落：不参与断行，按固定占位高度整块排入（默认不放大，见 this.imgH）
+      if (imgUrlOf(text)) {
+        const need = this.imgH + this.paraGap;
+        if (group.length > 0 && used + need > this.budgetH) {
+          flush();
+          groupStartChar = charTotal;
+        }
+        group.push({ p, s: 0, e: 0, img: true, h: this.imgH });
+        used += need;
+        lineCount++;
+        continue;
+      }
       let paraLines = [];
       try {
         paraLines = await this.breaker.breakLines(text, maxW, this.font, this.fontSize);
@@ -229,6 +243,7 @@ class ChapterPager {
         const prev = pages[pages.length - 2];
         let extra = 0;
         for (const ln of last.lines) {
+          if (ln.img) { extra += (ln.h || this.imgH) + this.paraGap; continue; }
           const fullPara = (ln.s === 0) && (ln.e >= paras[ln.p].length);
           extra += this.lineH + (fullPara ? this.paraGap : 0);
         }
@@ -247,6 +262,102 @@ class ChapterPager {
 }
 
 /* ---------- 11. 阅读控制器 Reader ---------- */
+/* 阅读字体：按「衬线 / 楷体 / 无衬线」分组的候选清单。
+ * 页面本身不内嵌字体文件，只用系统已安装的字体；startFontPicker 会用 canvas
+ * 逐项检测本机是否真的装了，只把装了的列出来，另有「自定义」可填任意字体名。 */
+const FONT_GROUPS = [
+  { key: 'fontGSerif', families: [
+    'Songti SC', 'SimSun', 'NSimSun', 'STSong', '华文宋体', '华文中宋', 'Noto Serif SC',
+    'Source Han Serif SC', '思源宋体', '方正书宋', 'Book Antiqua', 'Palatino Linotype', 'Georgia', 'Times New Roman',
+  ] },
+  { key: 'fontGKai', families: [
+    'KaiTi', 'STKaiti', 'Kaiti SC', '楷体', '华文楷体', '方正楷体', '华文行楷', '华文新魏',
+  ] },
+  { key: 'fontGSans', families: [
+    'PingFang SC', 'Microsoft YaHei', '微软雅黑', 'Noto Sans SC', 'Source Han Sans SC', '思源黑体',
+    'DengXian', '等线', 'SimHei', '黑体', 'MS YaHei', 'Segoe UI', 'Helvetica Neue', 'Arial',
+  ] },
+  { key: 'fontGOther', families: [
+    'FangSong', '仿宋', '仿宋_GB2312', '华文仿宋', 'STFangsong', 'STFangSong',
+    'STXihei', '华文细黑', 'STHupo', '华文琥珀', 'STLiti', '隶书', '华文隶书',
+    'LiSu', 'YouYuan', '幼圆', '方正舒体', '方正姚体',
+  ] },
+];
+/* 常见字体别名（自定义输入「微软雅黑」这类中文名时补上本机真正可用的族名） */
+const FONT_ALIASES = {
+  '微软雅黑': ['Microsoft YaHei', 'Microsoft YaHei UI'],
+  '仿宋': ['FangSong', 'FangSong_GB2312'],
+  '仿宋_gb2312': ['FangSong_GB2312', 'FangSong'],
+  '黑体': ['SimHei'],
+  '楷体': ['KaiTi'],
+  '宋体': ['SimSun'],
+  '新宋体': ['NSimSun'],
+  '隶书': ['LiSu'],
+  '幼圆': ['YouYuan'],
+  '等线': ['DengXian'],
+  '华文楷体': ['STKaiti'],
+  '华文宋体': ['STSong'],
+  '华文仿宋': ['STFangsong'],
+  '华文细黑': ['STXihei'],
+  '华文行楷': ['STXingkai'],
+  '华文新魏': ['STXinwei'],
+  '华文琥珀': ['STHupo'],
+  '华文隶书': ['STLiti'],
+  '方正舒体': ['FZShuTi'],
+  '方正姚体': ['FZYaoTi'],
+  '苹方': ['PingFang SC', 'PingFang TC'],
+  '思源宋体': ['Source Han Serif SC', 'Noto Serif SC'],
+  '思源黑体': ['Source Han Sans SC', 'Noto Sans SC'],
+};
+
+/* 旧版三个预设值 → 实际字体族（保证老设置 / 老备份继续可用） */
+const FONT_PRESETS = {
+  serif: '"Songti SC","Noto Serif CJK SC","Source Han Serif SC","SimSun","STSong",serif',
+  kai: '"KaiTi","STKaiti","Kaiti SC","楷体","华文楷体",serif',
+  sans: '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","微软雅黑",sans-serif',
+};
+/* 旧预设键 → 字体分组（升级时迁移成具体字体名，便于在下拉里选中） */
+const FONT_LEGACY_GROUP = { serif: 'fontGSerif', kai: 'fontGKai', sans: 'fontGSans' };
+
+/** 把单个字体名展开为 CSS 字体族列表（中文名补英文别名，最后带上通用族兜底） */
+function fontStackOf(name, generic = 'serif') {
+  const n = String(name || '').trim();
+  if (!n) return FONT_PRESETS.serif;   // 空 = 自动（与原「宋体系」默认外观一致）
+  if (FONT_PRESETS[n]) return FONT_PRESETS[n];
+  const alias = FONT_ALIASES[n.toLowerCase()] || FONT_ALIASES[n] || [];
+  const families = [n, ...alias].filter((f, i, a) => a.indexOf(f) === i);
+  return families.map(f => /[\s"'\\]/.test(f) ? `"${f}"` : f).join(',') + ',' + generic;
+}
+/* 字体是否已安装的探测：用「目标字体 + 某通用族」与「该通用族自身」的实测宽度对比。
+ * 装了的话目标字体会生效、宽度与通用族不同；没装则两者完全一致。
+ * 逐个通用族各比各的（有的字体恰好与某个通用族等宽，会造成漏判）。 */
+const FontDetector = {
+  _ctx: null,
+  _cache: new Map(),
+  _measure(size, fs) {
+    this._ctx.font = size + 'px ' + fs;
+    return this._ctx.measureText('汉字测试ABCgjpqy0123').width;
+  },
+  has(family) {
+    const name = String(family || '').trim();
+    if (!name) return false;
+    if (this._cache.has(name)) return this._cache.get(name);
+    if (!this._ctx) {
+      const c = document.createElement('canvas');
+      this._ctx = c.getContext ? c.getContext('2d') : null;
+    }
+    let ok = true;   // 无 canvas 环境：不过滤，全部列出
+    if (this._ctx) {
+      const size = 72;
+      const quoted = '"' + name.replace(/"/g, '') + '"';
+      ok = ['serif', 'sans-serif', 'monospace'].some(g =>
+        Math.abs(this._measure(size, quoted + ',' + g) - this._measure(size, g)) > 0.6);
+    }
+    this._cache.set(name, ok);
+    return ok;
+  },
+};
+
 /* 默认快捷键（值对应 KeyboardEvent.key，可在设置中自定义） */
 const KEY_ACTIONS = ['prev', 'next', 'chapterStart', 'chapterEnd'];
 const DEFAULT_KEYMAP = {
@@ -341,6 +452,7 @@ class Reader {
   }
 
   /* ---------- 度量与排版 ---------- */
+  /** 读取正文区可用宽高（读取 clientWidth/Height 会同步触发布局，字体刚改也能量到真实值） */
   _refreshMetrics() {
     const content = this.el.content;
     const cs = getComputedStyle(content);
@@ -354,6 +466,16 @@ class Reader {
     };
   }
 
+  /** 清空分页缓存，并在当前字符偏移处重新分页（字号 / 字体 / 页宽变化后使用） */
+  _repaginateAtCurrentOffset() {
+    if (!this.book) return;
+    const { pages } = this._pagesCache.get(this.chapterIndex) || { pages: [] };
+    const page = pages[this.pageIndex] || pages[0];
+    const posOffset = page ? page.startChar : 0;
+    this._pagesCache.clear();
+    this.gotoChapter(this.chapterIndex, -1, posOffset);
+  }
+
   _pagerFor() {
     const s = this.settings;
     return new ChapterPager({
@@ -362,7 +484,7 @@ class Reader {
       vPad: 20,
       fontSize: s.fontSize,
       lineHeight: s.lineHeight,
-      fontFamily: s.fontFamily,
+      fontFamily: fontStackOf(s.fontFamily, s.fontFamily === 'sans' ? 'sans-serif' : 'serif'),
       breaker: this.breaker,
     });
   }
@@ -480,6 +602,31 @@ class Reader {
     let cur = null;
     for (let li = 0; li < page.lines.length; li++) {
       const ln = page.lines[li];
+      // 图片段落：整块渲染为居中图片，高度与分页预留一致（点开可在新标签看原图）
+      if (ln.img) {
+        cur = null;
+        const url = imgUrlOf(chapter.paras[ln.p]);
+        const box = document.createElement('div');
+        box.className = 'page-img';
+        box.dataset.p = ln.p;
+        box.style.height = (ln.h || 160) + 'px';
+        if (url) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = '';
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          img.referrerPolicy = 'no-referrer';
+          img.onerror = () => { img.remove(); box.classList.add('bad'); box.textContent = I18N.t('imgFail'); };
+          box.onclick = (ev) => {
+            ev.stopPropagation();   // 点图不触发左右翻页
+            try { window.open(url, '_blank', 'noopener'); } catch (e) { /* noop */ }
+          };
+          box.appendChild(img);
+        }
+        frag.appendChild(box);
+        continue;
+      }
       // 隐藏音标/词性时：正文中形如 "/音标/ 词性. " 的前缀一并过滤（仅影响显示；
       // 原文与划词定位(TTS、dataset)不变，词典联动取过滤后的干净词）
       const raw = chapter.paras[ln.p].slice(ln.s, ln.e);
@@ -571,23 +718,18 @@ class Reader {
     const content = this.el.content;
     content.style.setProperty('--font-size', settings.fontSize + 'px');
     content.style.setProperty('--reader-line-height', settings.lineHeight);
-    content.style.fontFamily =
-      settings.fontFamily === 'kai' ? '"KaiTi","STKaiti","Kaiti SC",serif' :
-      settings.fontFamily === 'sans' ? '"PingFang SC","Microsoft YaHei",sans-serif' :
-      '"Songti SC","Noto Serif CJK SC","SimSun",serif';
+    // fontFamily 存的是字体名（旧数据为 serif/kai/sans 三个预设值，同样兼容）
+    content.style.fontFamily = fontStackOf(settings.fontFamily,
+      settings.fontFamily === 'sans' ? 'sans-serif' : 'serif');
     content.style.width = settings.pageWidth + '%';
     content.classList.toggle('no-indent', !settings.indent);
     this.hotZonesOn = !!settings.hitZone;
     this.tts.setRate(settings.ttsRate);
     this.tts.setVoice(settings.ttsVoice);
     if (this.book && this._metrics) {
+      // 读取 clientWidth/Height 会同步触发布局，字体 / 字号刚改也能立即量到真实尺寸再重排
       this._refreshMetrics();
-      // 重新分页并按字符偏移恢复位置
-      const { pages } = this._pagesCache.get(this.chapterIndex) || { pages: [] };
-      const page = pages[this.pageIndex] || pages[0];
-      const posOffset = page ? page.startChar : 0;
-      this._pagesCache.clear();
-      this.gotoChapter(this.chapterIndex, -1, posOffset);
+      this._repaginateAtCurrentOffset();
     }
   }
 
@@ -630,6 +772,7 @@ class Reader {
     // 合并本页段落（跨页段落只读本页部分）
     const groups = [];
     for (const ln of page.lines) {
+      if (ln.img) continue;   // 图片不朗读
       const last = groups[groups.length - 1];
       // 朗读内容与正文显示一致：隐藏音标/词性时同样过滤 "/音标/ 词性. " 前缀
       const raw = chapter.paras[ln.p].slice(ln.s, ln.e);

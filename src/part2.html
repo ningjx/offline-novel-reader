@@ -197,7 +197,10 @@
         <div class="form-row"><label data-i18n="setFontSize">字号</label><select id="set-fontsize"></select></div>
         <div class="form-row"><label data-i18n="setLineHeight">行距</label><select id="set-lineheight"></select></div>
         <div class="form-row"><label data-i18n="setFont">字体</label>
-          <select id="set-fontfamily"><option value="serif" data-i18n="font_serif">宋体系 (衬线)</option><option value="kai" data-i18n="font_kai">楷体系</option><option value="sans" data-i18n="font_sans">黑体系 (无衬线)</option></select></div>
+          <select id="set-fontfamily"></select>
+          <input id="set-customfont" type="text" data-i18n-ph="fontCustomPh" placeholder="输入字体名，如 思源宋体" autocomplete="off" maxlength="60" style="display:none;margin-top:6px">
+          <div id="font-sample" class="font-sample" data-i18n="fontSample">床前明月光，疑是地上霜。</div>
+        </div>
         <div class="form-row"><label data-i18n="setPageWidth">页宽</label><select id="set-pagewidth"></select></div>
       </div>
       <div class="form-row"><label data-i18n="setPageTitle">标签页标题</label>
@@ -503,6 +506,12 @@ const I18N_LANGS = {
     doneBtn: '完成',
     theme_light: '浅色', theme_sepia: '羊皮纸', theme_dark: '深色', theme_green: '护眼绿',
     font_serif: '宋体系 (衬线)', font_kai: '楷体系', font_sans: '黑体系 (无衬线)',
+    fontGSerif: '宋体 / 衬线', fontGKai: '楷体 / 手写', fontGSans: '黑体 / 无衬线', fontGOther: '仿宋 / 其他',
+    fontAuto: '自动（按系统默认）',
+    fontCustom: '自定义字体…', fontCustomPh: '输入字体名，如 思源宋体',
+    fontSample: '床前明月光，疑是地上霜。',
+    imgFail: '图片加载失败',
+    fontNotInstalled: '（本机未安装，浏览器会回退到默认字体）',
     // 帮助
     helpHtml: '<h4>快速上手</h4>' +
       '<p>「导入小说」选择本地 .txt / .md 文件（支持多选、UTF-8 与 GBK 编码）；也可以「粘贴导入」。</p>' +
@@ -724,6 +733,12 @@ const I18N_LANGS = {
     doneBtn: 'Done',
     theme_light: 'Light', theme_sepia: 'Sepia', theme_dark: 'Dark', theme_green: 'Green',
     font_serif: 'Serif (song)', font_kai: 'Kai', font_sans: 'Sans (hei)',
+    fontGSerif: 'Serif', fontGKai: 'Kai / handwriting', fontGSans: 'Sans-serif', fontGOther: 'Fangsong / others',
+    fontAuto: 'Auto (system default)',
+    fontCustom: 'Custom font…', fontCustomPh: 'Font name, e.g. Noto Serif SC',
+    fontSample: 'The quick brown fox jumps over the lazy dog.',
+    imgFail: 'Image failed to load',
+    fontNotInstalled: ' (not installed — the browser falls back)',
     helpHtml: '<h4>Quick start</h4>' +
       '<p>Click <b>Import</b> and pick local .txt / .md files (multi-select, UTF-8 & GBK supported); you can also <b>paste text</b>.</p>' +
       '<p>Books and reading positions are stored in the browser IndexedDB automatically and survive refreshes.</p>' +
