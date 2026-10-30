@@ -257,7 +257,7 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
   background:var(--reader-bg);
 }
 #page-content{
-  height:100%; margin:0 auto; padding:34px 6px 44px; overflow:hidden;
+  height:100%; margin:0 auto; padding:34px 6px 26px; overflow:hidden;
   font-family:var(--font-family-serif);
   font-size:var(--font-size,18px);
   line-height:var(--reader-line-height,1.9);
@@ -492,7 +492,7 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
     transform:translateY(calc(100% + 32px));
   }
   #dict-panel.open{transform:none}
-  #page-content{padding-top:20px; padding-bottom:24px}
+  #page-content{padding-top:20px; padding-bottom:12px}
   .bt-hide-sm{display:none}
 }
 /* ---------- 手机端 ---------- */
@@ -518,7 +518,7 @@ select.mini{padding:5px 22px 5px 8px; border-radius:7px; border:1px solid var(--
   .modal{width:100%; max-height:90vh; border-radius:14px 14px 0 0; animation:toastIn .2s ease}
   /* 划词弹层更紧凑 */
   #sel-popup{transform:translate(-50%,-140%); padding:4px 5px;}
-  #page-content{padding-top:16px; padding-bottom:20px}
+  #page-content{padding-top:16px; padding-bottom:10px}
 }
 /* ---------- 极小屏（≤400px）：章节翻章（«»）永远显示在章节名右侧（内容可收缩，不浪费空间），仅撤下音标开关 */
 @media (max-width:400px){
@@ -16191,13 +16191,15 @@ class LineBreaker {
     return lo;
   }
 
-  /** 返回行区间数组 [[s,e], ...]（每 80 行让出一次主线程） */
-  async breakLines(text, maxW, font, fontSize) {
+  /** 返回行区间数组 [[s,e], ...]（每 80 行让出一次主线程）
+   *  firstMaxW: 首行可用宽度（段落首行有 text-indent 时比正常行窄） */
+  async breakLines(text, maxW, font, fontSize, firstMaxW) {
     const lines = [];
     let start = 0;
     let count = 0;
     while (start < text.length) {
-      const end = this._findBreak(text, start, maxW, font, fontSize);
+      const w = (lines.length === 0 && firstMaxW) ? Math.max(40, firstMaxW) : maxW;
+      const end = this._findBreak(text, start, w, font, fontSize);
       lines.push([start, end]);
       start = end;
       count++;
@@ -16213,26 +16215,26 @@ class LineBreaker {
  *  - p: 段落下标  s/e: 该段落内的字符区间（跨页可拆分）
  */
 class ChapterPager {
-  constructor({ pageW, pageH, vPad, fontSize, lineHeight, fontFamily, breaker }) {
+  constructor({ pageW, pageH, vPad, fontSize, lineHeight, fontFamily, breaker, indent }) {
     this.pageW = pageW; this.pageH = pageH; this.vPad = vPad;
     this.fontSize = fontSize; this.lineHeight = lineHeight;
     this.fontFamily = fontFamily;
     this.breaker = breaker;
+    this.indent = !!indent;   // 段落首行缩进两个字符（CSS text-indent:2em）
     this.font = breaker.fontString(fontSize, fontFamily);
     this.lineH = Math.round(fontSize * lineHeight);
     this.availH = Math.max(60, pageH - vPad * 2);
     // 段落底部间距（与 CSS .para margin-bottom:.35em 一致），分页时计入避免最后一行被裁切
     this.paraGap = Math.round(fontSize * 0.35);
-    // 纯静态预算（不做任何 DOM 实测）：底部预留「2 行 + 1 段间距」——
-    // 1 行兜底分数行高/浏览器断行与估算的偏差，1 行作为每页末尾的空白行，
-    // 额外 1 个段间距兜底页首/页尾段落的边距波动，确保最后一行永远放得下
-    this.budgetH = Math.max(40, this.availH - this.lineH * 2 - this.paraGap);
+    // 纯静态预算（不做 DOM 实测）：底部预留 1.5 行——中文避头尾规则会让浏览器偶尔
+    // 比 canvas 估算多折一行，留半行缓冲即可；再多就会在每页底部留下明显空白
+    this.budgetH = Math.max(40, this.availH - Math.round(this.lineH * 1.5) - this.paraGap);
     this.maxLines = Math.max(1, Math.floor(this.availH / this.lineH));
     // 插图占位高度：保持低调，不抢正文版面（约页宽一半、页高 34%，最多 220px）
     this.imgH = Math.max(80, Math.round(Math.min(this.pageW * 0.5, this.availH * 0.34, 220)));
   }
 
-  async paginate(paras, title) {
+  async paginate(paras, title, opts) {
     const pages = [];
     let group = [];          // 正在填充的页
     let groupStartChar = 0;
@@ -16253,6 +16255,8 @@ class ChapterPager {
     };
     let lineCount = 0;
     const maxW = Math.max(80, this.pageW); // pageW 已扣除内边距
+    // 首行要扣掉 text-indent:2em，否则估算会比浏览器少排两个字、经常多出一行
+    const firstMaxW = this.indent ? Math.max(40, maxW - this.fontSize * 2) : maxW;
 
     // 章首标题：首页顶部显示「第X章 章节名」，按与 CSS 相同的字号/行高预留高度，
     // 避免标题挤占正文导致首页最后几行被裁切（CSS: .page-title，1.12em / 1.55 / 下边距 .7em）
@@ -16285,7 +16289,7 @@ class ChapterPager {
       }
       let paraLines = [];
       try {
-        paraLines = await this.breaker.breakLines(text, maxW, this.font, this.fontSize);
+        paraLines = await this.breaker.breakLines(text, maxW, this.font, this.fontSize, firstMaxW);
       } catch (e) {
         // 极端情况兜底：整段作为一行
         paraLines = [[0, text.length]];
@@ -16333,8 +16337,59 @@ class ChapterPager {
       }
     }
 
+    // 折衷保障：有真实测量器时，用 DOM 高度再校对一遍——
+    // canvas 估算与浏览器实际换行总有出入，实测能把每页填到接近底部且不裁行
+    if (opts && typeof opts.measure === 'function') {
+      await this._balancePages(pages, paras, title, opts.measure, opts.maxH);
+    }
+
     const charCount = paras.reduce((n, t) => n + t.length, 0);
     return { pages, charCount, lineCount };
+  }
+
+  /** 用真实 DOM 高度校对分页：超高页把末行挪到下一页，还有空间的页从下一页补行 */
+  async _balancePages(pages, paras, title, measure, maxH) {
+    const withTitle = (i) => i === 0 && !!String(title || '').trim();
+    const limit = Math.max(60, maxH || this.pageH);
+    for (let i = 0; i < pages.length; i++) {
+      const pg = pages[i];
+      if (!pg.lines.length) continue;
+      let h = measure(pg.lines, withTitle(i));
+      let guard = 0;
+      while (h > limit && pg.lines.length > 1 && guard++ < 400) {
+        if (!pages[i + 1]) pages.push({ lines: [] });
+        pages[i + 1].lines.unshift(pg.lines.pop());
+        h = measure(pg.lines, withTitle(i));
+      }
+      guard = 0;
+      while (pages[i + 1] && pages[i + 1].lines.length && guard++ < 400) {
+        const trial = pg.lines.concat([pages[i + 1].lines[0]]);
+        const h2 = measure(trial, withTitle(i));
+        if (h2 > limit) break;
+        pg.lines = trial;
+        pages[i + 1].lines.shift();
+        h = h2;
+      }
+      if ((i & 3) === 3) await LineBreaker.yield();   // 每 4 页让出一次主线程
+    }
+    // 去掉空页，并按最终行区间重算每页的字符偏移与占用高度
+    const out = pages.filter(p => p.lines.length);
+    let charTotal = 0;
+    for (const pg of out) {
+      const start = charTotal;
+      let used = 0;
+      for (const ln of pg.lines) {
+        if (ln.img) { used += (ln.h || this.imgH) + this.paraGap; continue; }
+        charTotal += ln.e - ln.s;
+        used += this.lineH + (((ln.s === 0) && (ln.e >= paras[ln.p].length)) ? this.paraGap : 0);
+      }
+      pg.startChar = start;
+      pg.endChar = charTotal;
+      pg.used = used;
+    }
+    pages.length = 0;
+    for (const p of out) pages.push(p);
+    return pages;
   }
 }
 
@@ -16545,12 +16600,12 @@ class Reader {
 
   /** 清空分页缓存，并在当前字符偏移处重新分页（字号 / 字体 / 页宽变化后使用） */
   _repaginateAtCurrentOffset() {
-    if (!this.book) return;
+    if (!this.book) return Promise.resolve();
     const { pages } = this._pagesCache.get(this.chapterIndex) || { pages: [] };
     const page = pages[this.pageIndex] || pages[0];
     const posOffset = page ? page.startChar : 0;
     this._pagesCache.clear();
-    this.gotoChapter(this.chapterIndex, -1, posOffset);
+    return this.gotoChapter(this.chapterIndex, -1, posOffset);
   }
 
   _pagerFor() {
@@ -16558,18 +16613,21 @@ class Reader {
     return new ChapterPager({
       pageW: Math.max(200, this._metrics.pageW),
       pageH: Math.max(200, this._metrics.pageH),
-      vPad: 20,
+      vPad: 0,   // _refreshMetrics 已扣掉 CSS 上下内边距，这里再扣会重复、白白空掉一大截
       fontSize: s.fontSize,
       lineHeight: s.lineHeight,
       fontFamily: fontStackOf(s.fontFamily, s.fontFamily === 'sans' ? 'sans-serif' : 'serif'),
       breaker: this.breaker,
+      indent: !!s.indent,
     });
   }
 
   async _ensurePages(chapterIndex) {
     if (this._pagesCache.has(chapterIndex)) return this._pagesCache.get(chapterIndex);
     const chapter = this.chapters[chapterIndex];
-    const result = await this._pagerFor().paginate(chapter.paras, chapter.title);
+    const measure = this._makePageMeasurer(chapter);
+    const result = await this._pagerFor().paginate(chapter.paras, chapter.title,
+      measure ? { measure, maxH: this.el.content.clientHeight } : null);
     this._pagesCache.set(chapterIndex, result);
     // 只保留最近 3 章的分页缓存，防止内存膨胀
     if (this._pagesCache.size > 3) {
@@ -16660,34 +16718,28 @@ class Reader {
   }
 
   /* ---------- 渲染 ---------- */
-  _render() {
-    const chapter = this.chapters[this.chapterIndex];
-    if (!chapter) return;
-    const { pages } = this._pagesCache.get(this.chapterIndex) || { pages: [] };
-    const page = pages[this.pageIndex] || pages[0];
-    const root = this.el.content;
-    root.textContent = '';
-    if (!page) return;
+  /** 构建一页的 DOM 片段：渲染与「按真实高度分页」共用同一套结构，保证测量即所见 */
+  _pageFragment(chapter, lines, withTitle, forMeasure) {
     const frag = document.createDocumentFragment();
-    // 章首页顶部显示章节号与章节名（分页时已为其预留高度）
-    if (this.pageIndex === 0 && chapter.title) {
+    if (withTitle && chapter && chapter.title) {
       const h = document.createElement('div');
       h.className = 'page-title';
       h.textContent = chapter.title;
       frag.appendChild(h);
     }
     let cur = null;
-    for (let li = 0; li < page.lines.length; li++) {
-      const ln = page.lines[li];
+    let lastEl = null;
+    for (let li = 0; li < lines.length; li++) {
+      const ln = lines[li];
       // 图片段落：整块渲染为居中图片，高度与分页预留一致（点开可在新标签看原图）
       if (ln.img) {
-        cur = null;
-        const url = imgUrlOf(chapter.paras[ln.p]);
+        cur = null; lastEl = null;
         const box = document.createElement('div');
         box.className = 'page-img';
         box.dataset.p = ln.p;
         box.style.height = (ln.h || 160) + 'px';
-        if (url) {
+        const url = imgUrlOf(chapter.paras[ln.p]);
+        if (url && !forMeasure) {
           const img = document.createElement('img');
           img.src = url;
           img.alt = '';
@@ -16717,32 +16769,72 @@ class Reader {
         el.dataset.p = ln.p; el.dataset.s = ln.s; el.dataset.e = ln.e;
         el.textContent = text;
         frag.appendChild(el);
+        lastEl = el;
       } else {
-        const el = frag.lastElementChild;
-        el.dataset.e = ln.e;
-        el.textContent += text;
+        lastEl.dataset.e = ln.e;
+        lastEl.textContent += text;
       }
     }
-    root.appendChild(frag);
-    // 中间过渡段落（跨页段落在上/下页有接续）给出更紧凑间距
-    this._tightenBoundaryParas(page);
+    // 跨页/跨段落的过渡段收紧段距（与 CSS .para.tight 对应），测量与显示保持一致
+    for (const el of frag.querySelectorAll('.para')) {
+      const p = +el.dataset.p;
+      const full = +el.dataset.s === 0 && +el.dataset.e >= chapter.paras[p].length;
+      if (!full) el.classList.add('tight');
+    }
+    return frag;
+  }
+
+  /** 真实高度测量器：把一页内容装进同尺寸的隐藏容器里，返回 scrollHeight（>maxH 即超高） */
+  _makePageMeasurer(chapter) {
+    const src = this.el.content;
+    if (!src) return null;
+    const W = src.clientWidth, H = src.clientHeight;
+    return (lines, withTitle) => {
+      const box = document.createElement('div');
+      box.id = 'page-content';          // 复用同一套 CSS（测量是同步的，随即移除）
+      box.style.cssText = src.style.cssText;
+      box.style.position = 'fixed';
+      box.style.left = '-20000px';
+      box.style.top = '0';
+      box.style.width = W + 'px';
+      box.style.height = H + 'px';
+      box.style.visibility = 'hidden';
+      box.style.pointerEvents = 'none';
+      box.style.zIndex = '-1';
+      box.appendChild(this._pageFragment(chapter, lines, withTitle, true));
+      document.body.appendChild(box);
+      const h = box.scrollHeight;
+      box.remove();
+      return h;
+    };
+  }
+
+  _render() {
+    const chapter = this.chapters[this.chapterIndex];
+    if (!chapter) return;
+    const { pages } = this._pagesCache.get(this.chapterIndex) || { pages: [] };
+    const page = pages[this.pageIndex] || pages[0];
+    const root = this.el.content;
+    root.textContent = '';
+    if (!page) return;
+    root.appendChild(this._pageFragment(chapter, page.lines, this.pageIndex === 0, false));
     // 折衷保障（零移行、零重排）：仅一次轻量测量——若本页真实渲染高度超出可视区
     // （浏览器断行/行高与估算的残余偏差），允许页内向下滚动看全最后一行；
     // 正常页不加 can-scroll，外观与交互完全不变
     const c = this.el.content;
+    // 先移除 can-scroll 再测量：它会给正文加额外底部内边距，留着会让上一次的状态「锁死」，
+    // 之后每页都误判为溢出、底部凭空多出一大截空白
+    c.classList.remove('can-scroll');
     c.scrollTop = 0;
-    c.classList.toggle('can-scroll', c.scrollHeight > c.clientHeight + 1);
-  }
-
-  /** 跨页段落首行/末行排版微调（可读性） */
-  _tightenBoundaryParas(page) {
-    const els = this.el.content.querySelectorAll('.para');
-    for (const el of els) {
-      const p = +el.dataset.p;
-      const len = this.chapters[this.chapterIndex].paras[p].length;
-      const fullStart = +el.dataset.s === 0;
-      const fullEnd = +el.dataset.e >= len;
-      if (!fullStart || !fullEnd) el.classList.add('tight');
+    if (c.scrollHeight > c.clientHeight + 1) {
+      // 渲染后放不下，说明分页时的尺寸和当前窗口不一致（窗口刚缩放 / 字体刚切换等）。
+      // 按当前尺寸立刻重排一次，而不是给正文加滚动条；_healing 防递归。
+      if (!this._healing) {
+        this._healing = true;
+        this._repaginateAtCurrentOffset().finally(() => { this._healing = false; });
+        return;
+      }
+      c.classList.add('can-scroll');   // 极端兜底（单行都放不下时才走到这里）
     }
   }
 
